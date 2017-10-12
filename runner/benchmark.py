@@ -4,6 +4,7 @@ from __future__ import print_function, division
 import traceback
 
 from subprocess import Popen, PIPE
+from mpi4py import MPI
 
 import sys
 import os
@@ -134,6 +135,18 @@ def execute_cmd(cmd):
     if rc and err.strip():  # disregard inconsequential stderr output
         logging.debug("STDERR:\n%s", err)
     return rc, out, err
+
+
+def spawn_testflo(args):
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    maxprocs = max(comm.Get_attr(MPI.UNIVERSE_SIZE) - size, 1)
+
+    rc = 0
+    testflo_exe = os.path.join(benchmark_dir, "testflo-mpi.py")
+    _comm = MPI.COMM_SELF.Spawn(testflo_exe, args, maxprocs)
+    _comm.recv(rc)
+    return rc
 
 
 def remove_dir(dirname):
@@ -1130,15 +1143,17 @@ class BenchmarkRunner(object):
                     mem_messages = mem_messages[max_messages:]
 
     def run_unittests(self, trigger_msg):
-        testflo_cmd = "testflo -n 1 -vs"
+        # testflo_cmd = "testflo -n 1 -vs"
 
         #if "qsub" in conf and conf["qsub"]:
         #     testflo_cmd += " --qsub"
 
         # run testflo command
-        code, out, err = execute_cmd(testflo_cmd)
-        logging.info(out)
-        logging.warn(err)
+        # code, out, err = execute_cmd(testflo_cmd)
+        # logging.info(out)
+        # logging.warn(err)
+        print("spawning testflo", '-n', '1', '-vs')
+        code = spawn_testflo(['-n', '1', '-vs'])
 
         if code:
             # an expected failure will return an error code, check fail count
@@ -1161,10 +1176,13 @@ class BenchmarkRunner(object):
         """
         Use testflo to run benchmarks)
         """
-        testflo_cmd = "testflo -n 1 -bv -d %s" % csv_file
-        if "qsub" in conf and conf["qsub"]:
-            testflo_cmd += " --qsub"
-        code, out, err = execute_cmd(testflo_cmd)
+        print("spawning testflo", '-n', '1', '-bv', '-d', csv_file)
+        code = spawn_testflo(['-n', '1', '-bv', '-d', csv_file])
+
+        # testflo_cmd = "testflo -n 1 -bv -d %s" % csv_file
+        # if "qsub" in conf and conf["qsub"]:
+        #     testflo_cmd += " --qsub"
+        # code, out, err = execute_cmd(testflo_cmd)
 
         # if failure, post to slack
         if code and self.slack:
