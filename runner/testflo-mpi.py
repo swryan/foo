@@ -8,11 +8,11 @@ import sys
 
 from mpi4py import MPI
 
-import testflo
+from testflo.main import main 
 
 
 print "running testflo with:", sys.argv[1:]
-rc = testflo.main.main(sys.argv[1:])
+rc = main(sys.argv[1:])
 
 print "testflo completed with rc:", rc
 comm = MPI.COMM_WORLD
