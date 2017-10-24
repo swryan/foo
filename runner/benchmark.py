@@ -631,7 +631,11 @@ class BenchmarkDatabase(object):
             logging.warn(msg)
             return [], []
 
-        prev_data = self.get_data_for_timestamp(prev_time)
+        # prev_data = self.get_data_for_timestamp(prev_time)
+
+        avg_data = self.get_data_avg_for_timestamp(curr_data["spec"], prev_time)
+        # from pprint import pprint
+        # pprint(avg_data)
 
         cpu_messages = []
         mem_messages = []
@@ -645,35 +649,37 @@ class BenchmarkDatabase(object):
             curr_load5   = curr_data["load_5m"][i]
             curr_load15  = curr_data["load_15m"][i]
 
-            if len(prev_data["elapsed"]) > i:
-                prev_elapsed = prev_data["elapsed"][i]
-                prev_memory  = prev_data["memory"][i]
-                prev_load1   = prev_data["load_1m"][i]
-                prev_load5   = prev_data["load_5m"][i]
-                prev_load15  = prev_data["load_15m"][i]
+            if curr_spec in avg_data:
+                avg_elapsed = avg_data[curr_spec]["elapsed"]
+                avg_memory  = avg_data[curr_spec]["memory"]
+                avg_load1   = avg_data[curr_spec]["LoadAvg1m"]
+                avg_load5   = avg_data[curr_spec]["LoadAvg5m"]
+                avg_load15  = avg_data[curr_spec]["LoadAvg15m"]
 
-                time_delta   = curr_elapsed - prev_elapsed
-                mem_delta    = curr_memory  - prev_memory
+                time_delta   = curr_elapsed - avg_elapsed
+                mem_delta    = curr_memory  - avg_memory
 
                 if "url" in conf:
                     link = "<%s|%s>" % (conf["url"]+self.name+'/'+curr_spec, curr_spec.split(".")[-1])
                 else:
                     link = curr_spec.split(".")[-1]
 
-                pct_change = 100.*time_delta/prev_elapsed
+                pct_change = 100.*time_delta/avg_elapsed
+                print(curr_spec, "elapsed delta", time_delta, avg_elapsed, pct_change)
                 if abs(pct_change) >= threshold:
                     inc_or_dec = "decreased" if (pct_change < 0) else "increased"
                     msg = "%s %s by %4.1f%%: %5.2f (load avg = %3.1f, %3.1f, %3.1f) vs. %5.2f (load avg = %3.1f, %3.1f, %3.1f)" \
                         % (link, inc_or_dec, abs(pct_change),
                            curr_elapsed, curr_load1, curr_load5, curr_load15,
-                           prev_elapsed, prev_load1, prev_load5, prev_load15)
+                           avg_elapsed, avg_load1, avg_load5, avg_load15)
                     cpu_messages.append(msg)
 
-                pct_change = 100.*mem_delta/prev_memory
+                pct_change = 100.*mem_delta/avg_memory
+                print(curr_spec, "memory delta", mem_delta, avg_memory, pct_change)
                 if abs(pct_change) >= threshold:
                     inc_or_dec = "decreased" if (pct_change < 0) else "increased"
                     msg = "%s %s by %4.1f%% (%5.2f  vs. %5.2f)" \
-                        % (link, inc_or_dec, abs(pct_change), curr_memory, prev_memory)
+                        % (link, inc_or_dec, abs(pct_change), curr_memory, avg_memory)
                     mem_messages.append(msg)
 
         return cpu_messages, mem_messages
@@ -694,6 +700,23 @@ class BenchmarkDatabase(object):
             data.setdefault('load_5m', []).append(row[6])
             data.setdefault('load_15m', []).append(row[7])
 
+        return data
+
+    def get_data_avg_for_timestamp(self, specs, depth=5):
+        """
+        get the moving of of benchmark data for the given timestamp
+        """
+        data = {}
+
+        for spec in specs:
+            print("getting avg for", spec)
+            spec_data = self.get_data_for_spec(spec)
+            print("recent timestamps:", spec_data['timestamp'][:depth])
+            data[spec] = {}
+            for key in ('elapsed', 'memory', 'LoadAvg1m', 'LoadAvg5m', 'LoadAvg15m'):
+                recent = spec_data[key][:depth]
+                data[spec][key] = sum(recent)/len(recent)
+                print("average", key, "from", recent, "=", sum(recent), "/", len(recent), "=",data[spec][key])
         return data
 
     def get_data_for_spec(self, spec):
@@ -1101,7 +1124,7 @@ class BenchmarkRunner(object):
                     image_url = conf["images"]["url"]
 
         # if slack info is provided, post message to slack and
-        # notify if any benchmarks changed by more than 10%
+        # notify if any benchmarks changed by more than threshold
         if self.slack:
             # post message that benchmarks were run with summary plot(s)
             self.slack.post_message(trigger_msg)
@@ -1234,7 +1257,7 @@ def _get_parser():
                         help='plot benchmark history for SPEC')
 
     parser.add_argument('-c', '--check', action='store_true', dest='check',
-                        help='check the most recent benchmark data for >10%% change')
+                        help='check the most recent benchmark data for >15%% change')
 
     parser.add_argument('-d', '--dump', action='store_true', dest='dump',
                         help='dump the contents of the database to an SQL file')
