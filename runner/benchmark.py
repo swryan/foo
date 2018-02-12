@@ -1145,7 +1145,7 @@ class BenchmarkRunner(object):
                     mem_messages = mem_messages[max_messages:]
 
     def run_unittests(self, run_name, trigger_msg):
-        testflo_cmd = "testflo -n 1 -vs"
+        testflo_cmd = "testflo -n 1"
 
         # run testflo command
         code, out, err = execute_cmd(testflo_cmd)
