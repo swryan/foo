@@ -1077,8 +1077,13 @@ class BenchmarkRunner(object):
                                 os.remove(csv_file)
 
                 if good_commits:
-                    # back up and transfer database
-                    db.backup()
+                    # if benchmarks didn't fail but there are no commits in database, then
+                    # no benchmarks are defined so don't run again for this set of commits
+                    if not db.get_last_commit(project["repository"]):
+                        write_json(fail_file, current_commits)
+                    else:
+                        # back up and transfer database
+                        db.backup()
 
                 # clean up environment
                 remove_env(run_name, keep_env)
