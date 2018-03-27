@@ -554,7 +554,8 @@ class BenchmarkDatabase(object):
         """
         self._ensure_commits()
 
-        self.cursor.execute("SELECT LastCommitID FROM LastCommits WHERE Trigger == ?", (trigger,))
+        self.cursor.execute("SELECT LastCommitID FROM LastCommits "
+                            "WHERE Trigger == ?", (trigger,))
         rows = self.cursor.fetchall()
         if rows:
             return rows[0][0]
@@ -611,7 +612,8 @@ class BenchmarkDatabase(object):
         logging.info("Checking benchmarks for timestamp: %s", timestamp)
 
         if timestamp is None:
-            for row in self.cursor.execute("SELECT * FROM BenchmarkData ORDER BY DateTime DESC LIMIT 1"):
+            for row in self.cursor.execute("SELECT * FROM BenchmarkData "
+                                           "ORDER BY DateTime DESC LIMIT 1"):
                 timestamp = row[0]  # row[0] is the timestamp for this set of benchmark data
 
         if timestamp is None:
@@ -628,7 +630,9 @@ class BenchmarkDatabase(object):
             return [], []
 
         prev_time = None
-        for row in self.cursor.execute("SELECT * FROM BenchmarkData WHERE DateTime<? and Status=='OK' ORDER BY DateTime DESC LIMIT 1", (timestamp,)):
+        for row in self.cursor.execute("SELECT * FROM BenchmarkData "
+                                       "WHERE DateTime<? and Status=='OK' "
+                                       "ORDER BY DateTime DESC LIMIT 1", (timestamp,)):
             prev_time = row[0]  # row[0] is the timestamp for this set of benchmark data
 
         if not prev_time:
@@ -689,7 +693,9 @@ class BenchmarkDatabase(object):
         """
         data = {}
 
-        for row in self.cursor.execute("SELECT * FROM BenchmarkData WHERE DateTime=? and Status=='OK' ORDER BY DateTime", (timestamp,)):
+        for row in self.cursor.execute("SELECT * FROM BenchmarkData "
+                                       "WHERE DateTime=? and Status=='OK' "
+                                       "ORDER BY DateTime", (timestamp,)):
             data.setdefault('timestamp', []).append(row[0])
             data.setdefault('spec', []).append(row[1])
             data.setdefault('status', []).append(row[2])
@@ -719,7 +725,9 @@ class BenchmarkDatabase(object):
                 data.setdefault('LoadAvg5m', []).append(row[6])
                 data.setdefault('LoadAvg15m', []).append(row[7])
         else:
-            for row in self.cursor.execute("SELECT * FROM BenchmarkData WHERE Spec=? and Status=='OK' ORDER BY DateTime", (spec,)):
+            for row in self.cursor.execute("SELECT * FROM BenchmarkData "
+                                           "WHERE Spec=? and Status=='OK' "
+                                           "ORDER BY DateTime", (spec,)):
                 data.setdefault('timestamp', []).append(row[0])
                 data.setdefault('status', []).append(row[2])
                 data.setdefault('elapsed', []).append(row[3])
