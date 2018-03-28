@@ -554,7 +554,8 @@ class BenchmarkDatabase(object):
         """
         self._ensure_commits()
 
-        self.cursor.execute("SELECT LastCommitID FROM LastCommits WHERE Trigger == ?", (trigger,))
+        self.cursor.execute("SELECT LastCommitID FROM LastCommits "
+                            "WHERE Trigger == ?", (trigger,))
         rows = self.cursor.fetchall()
         if rows:
             return rows[0][0]
@@ -611,7 +612,8 @@ class BenchmarkDatabase(object):
         logging.info("Checking benchmarks for timestamp: %s", timestamp)
 
         if timestamp is None:
-            for row in self.cursor.execute("SELECT * FROM BenchmarkData ORDER BY DateTime DESC LIMIT 1"):
+            for row in self.cursor.execute("SELECT * FROM BenchmarkData "
+                                           "ORDER BY DateTime DESC LIMIT 1"):
                 timestamp = row[0]  # row[0] is the timestamp for this set of benchmark data
 
         if timestamp is None:
@@ -628,7 +630,9 @@ class BenchmarkDatabase(object):
             return [], []
 
         prev_time = None
-        for row in self.cursor.execute("SELECT * FROM BenchmarkData WHERE DateTime<? and Status=='OK' ORDER BY DateTime DESC LIMIT 1", (timestamp,)):
+        for row in self.cursor.execute("SELECT * FROM BenchmarkData "
+                                       "WHERE DateTime<? and Status=='OK' "
+                                       "ORDER BY DateTime DESC LIMIT 1", (timestamp,)):
             prev_time = row[0]  # row[0] is the timestamp for this set of benchmark data
 
         if not prev_time:
@@ -689,7 +693,9 @@ class BenchmarkDatabase(object):
         """
         data = {}
 
-        for row in self.cursor.execute("SELECT * FROM BenchmarkData WHERE DateTime=? and Status=='OK' ORDER BY DateTime", (timestamp,)):
+        for row in self.cursor.execute("SELECT * FROM BenchmarkData "
+                                       "WHERE DateTime=? and Status=='OK' "
+                                       "ORDER BY DateTime", (timestamp,)):
             data.setdefault('timestamp', []).append(row[0])
             data.setdefault('spec', []).append(row[1])
             data.setdefault('status', []).append(row[2])
@@ -701,20 +707,34 @@ class BenchmarkDatabase(object):
 
         return data
 
-    def get_data_for_spec(self, spec):
+    def get_data_for_spec(self, spec, since=None):
         """
         get benchmark data for the given spec
         """
         data = {}
 
-        for row in self.cursor.execute("SELECT * FROM BenchmarkData WHERE Spec=? and Status=='OK' ORDER BY DateTime", (spec,)):
-            data.setdefault('timestamp', []).append(row[0])
-            data.setdefault('status', []).append(row[2])
-            data.setdefault('elapsed', []).append(row[3])
-            data.setdefault('memory', []).append(row[4])
-            data.setdefault('LoadAvg1m', []).append(row[5])
-            data.setdefault('LoadAvg5m', []).append(row[6])
-            data.setdefault('LoadAvg15m', []).append(row[7])
+        if since:
+            for row in self.cursor.execute("SELECT * FROM BenchmarkData "
+                                           "WHERE Spec=? and Status=='OK' and DateTime>? "
+                                           "ORDER BY DateTime", (spec, since)):
+                data.setdefault('timestamp', []).append(row[0])
+                data.setdefault('status', []).append(row[2])
+                data.setdefault('elapsed', []).append(row[3])
+                data.setdefault('memory', []).append(row[4])
+                data.setdefault('LoadAvg1m', []).append(row[5])
+                data.setdefault('LoadAvg5m', []).append(row[6])
+                data.setdefault('LoadAvg15m', []).append(row[7])
+        else:
+            for row in self.cursor.execute("SELECT * FROM BenchmarkData "
+                                           "WHERE Spec=? and Status=='OK' "
+                                           "ORDER BY DateTime", (spec,)):
+                data.setdefault('timestamp', []).append(row[0])
+                data.setdefault('status', []).append(row[2])
+                data.setdefault('elapsed', []).append(row[3])
+                data.setdefault('memory', []).append(row[4])
+                data.setdefault('LoadAvg1m', []).append(row[5])
+                data.setdefault('LoadAvg5m', []).append(row[6])
+                data.setdefault('LoadAvg15m', []).append(row[7])
 
         return data
 
@@ -761,8 +781,9 @@ class BenchmarkDatabase(object):
         filename = None
 
         try:
-            import matplotlib
-            matplotlib.use('Agg')
+            if not show:
+                import matplotlib
+                matplotlib.use('Agg')
             from matplotlib import pyplot, ticker
 
             data = self.get_data_for_spec(spec)
@@ -821,8 +842,9 @@ class BenchmarkDatabase(object):
         filenames = []
 
         try:
-            import matplotlib
-            matplotlib.use('Agg')
+            if not show:
+                import matplotlib
+                matplotlib.use('Agg')
             from matplotlib import pyplot, dates
 
             color_map = pyplot.get_cmap('rainbow')
@@ -862,28 +884,29 @@ class BenchmarkDatabase(object):
                 color_cycle = iter([color_map(1.*i/num_specs) for i in range(num_specs)])
 
                 for spec in plot_specs:
-                    data = self.get_data_for_spec(spec)
+                    # get benchmark data for the last 6 weeks
+                    since = time.time() - 6*7*24*60*60
+                    data = self.get_data_for_spec(spec, since=since)
 
-                    # only plot data for the last num_runs benchmark runs
-                    num_runs = 20
+                    if data:
+                        datetimes = [datetime.fromtimestamp(t) for t in data['timestamp']]
 
-                    datetimes = [datetime.fromtimestamp(t) for t in data['timestamp'][-num_runs:]]
-                    timestamp = dates.date2num(datetimes)
-                    elapsed   = np.array(data['elapsed'][-num_runs:])
-                    memory    = np.array(data['memory'][-num_runs:])
+                        timestamp = dates.date2num(datetimes)
+                        elapsed   = np.array(data['elapsed'])
+                        memory    = np.array(data['memory'])
 
-                    max_elapsed = max(max_elapsed, np.max(elapsed))
-                    max_memory  = max(max_memory, np.max(memory))
+                        max_elapsed = max(max_elapsed, np.max(elapsed))
+                        max_memory  = max(max_memory, np.max(memory))
 
-                    color = next(color_cycle)
+                        color = next(color_cycle)
 
-                    a1 = pyplot.subplot(3, 1, 1)
-                    pyplot.plot_date(timestamp, elapsed/max_elapsed, '.-', color=color, label=spec)
-                    pyplot.ylabel('elapsed time')
+                        a1 = pyplot.subplot(3, 1, 1)
+                        pyplot.plot_date(timestamp, elapsed/max_elapsed, '.-', color=color, label=spec)
+                        pyplot.ylabel('elapsed time')
 
-                    a2 = pyplot.subplot(3, 1, 2)
-                    pyplot.plot_date(timestamp, memory/max_memory, '.-', color=color, label=spec)
-                    pyplot.ylabel('memory usage')
+                        a2 = pyplot.subplot(3, 1, 2)
+                        pyplot.plot_date(timestamp, memory/max_memory, '.-', color=color, label=spec)
+                        pyplot.ylabel('memory usage')
 
                 # format the ticks
                 a1.set_xticks([])
@@ -1103,7 +1126,7 @@ class BenchmarkRunner(object):
         summary_plots = []
 
         if conf["plot_history"]:
-            summary_plots = db.plot_benchmarks(save=True)
+            summary_plots = db.plot_benchmarks(save=True, show=False)
             if conf.get("images") and summary_plots:
                 rc = upload(summary_plots, conf["images"]["upload"])
                 if rc == 0:
