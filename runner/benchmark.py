@@ -865,7 +865,7 @@ class BenchmarkDatabase(object):
 
             specs = select_specs
 
-            specs_per_plot = 10
+            specs_per_plot = 9
 
             plot_count = int(math.ceil(len(specs)/specs_per_plot))
 
@@ -914,12 +914,12 @@ class BenchmarkDatabase(object):
                 a2.xaxis.set_major_formatter(weekFmt)
                 for tick in a2.xaxis.get_major_ticks():
                     tick.label.set_fontsize('x-small')
-                pyplot.xticks(rotation=45)
+                # pyplot.xticks(rotation=45)
 
                 a1.set_ylim(-0.1, 1.1)
                 a2.set_ylim(-0.1, 1.1)
 
-                pyplot.legend(plot_specs, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.3))
+                pyplot.legend(plot_specs, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
 
                 if show:
                     pyplot.show()
@@ -1321,9 +1321,9 @@ def main(args=None):
             if options.plot:
                 db = BenchmarkDatabase(project_name)
                 if options.plot == 'all':
-                    db.plot_benchmarks(show=True)
+                    db.plot_benchmarks(save=True)
                 else:
-                    db.plot_benchmark_data(options.plot)
+                    db.plot_benchmark_data(options.plot, show=True)
             elif options.dump:
                 db = BenchmarkDatabase(project_name)
                 db.dump()
