@@ -30,8 +30,11 @@ echo "slurm.hosts:"
 echo "-----------"
 cat slurm.hosts
 
+# top processes before running benchmarks
+ps -eo pid,ppid,user,cmd:60,%mem,%cpu --sort=-%cpu|head -25
+
 # mpirun
-srun -n 1 mpirun -np 1 -machinefile slurm.hosts testflo -n 1 -bv -d $CSV_FILE
+srun -n 1 mpirun -np 1 -machinefile slurm.hosts testflo -n 1 --nompi -bvs -d $CSV_FILE
 
 # release the allocation
 exit
