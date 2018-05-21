@@ -1,42 +1,47 @@
 #!/bin/bash
 #
-# This script submits a job via SLURM to perform benchmarks with testflo
+# This script will run a batch job on the mdao cluster
+# to perform benchmarks.
 #
-# Usage: $0 RUN_NAME CSV_FILE NPROCS
+# Usage: $0 RUN_NAME
 #
 #     RUN_NAME : the name of the job (REQUIRED)
-#     CSV_FILE : the file name for the benchmark data (REQUIRED)
-#     NPROCS   : the number of processors (optional, default 20)
 #
 
 RUN_NAME=$1
-CSV_FILE=$2
+CSV_FILE=$1.csv
+CMD="testflo --pre_announce -bvs -d $CSV_FILE benchmark/benchmark_beam.py:BenchBeamNP2.benchmark_beam_np2"
 
-case $3 in
-    ''|*[!0-9]*) NPROCS=20 ;;
-    *)           NPROCS=$1 ;;
-esac
+#export MPIRUN_ARGS="-v --display-devel-map --display-allocation"
+# --oversubscribe"
 
-# generate job script
-cat << EOM >job
+
+sbatch -W -N 1 -J $RUN_NAME <<EOF
 #!/bin/bash
+# Submit only to the mdao partition:
+#SBATCH --partition=mdao
+#
+# Don't run on mdao0:
+#SBATCH --exclude=mdao0
+#
+# Prevent other jobs from being scheduled on the allocated node(s):
+#SBATCH --exclusive
+#
+# Set the mininum and maximum number of nodes:
+#SBATCH --nodes=1-1
+#
+# CPU affinity:
+#SBATCH --sockets-per-node=1
+#SBATCH --cores-per-socket=1
+#
+# Output files:
+#SBATCH --output=slurm-%x-%j.out.txt
+#SBATCH --error=slurm-%x-%j.err.txt
 
-# USE_PROC_FILES causes I/O erros when using MPI.Spawn
-unset USE_PROC_FILES
+export OMPI_MCA_mpi_warn_on_fork=0
+ulimit -s 10240
 
-# create machinefile
-srun -l -p mdao /bin/hostname | sort -n | awk '{print \$2}' > slurm.hosts
-echo "slurm.hosts:"
-echo "-----------"
-cat slurm.hosts
-
-# mpirun
-srun -n 1 mpirun -np 1 -machinefile slurm.hosts testflo -n 1 -bv -d $CSV_FILE
-
-# release the allocation
-exit
-EOM
-
-# allocate resources and run the job script (exclude interactive node mdao10)
-salloc -vvv -p mdao -x mdao10 --exclusive --wait-all-nodes=1 -n $NPROCS -J $RUN_NAME bash job
-
+# If the MPI library supports PMI2, the hostfile is not needed:
+#srun -n 1 --mpi=pmi2 $CMD
+$CMD
+EOF
