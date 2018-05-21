@@ -1147,7 +1147,8 @@ class BenchmarkRunner(object):
 
             # check benchmarks for significant changes & post any resulting messages
             cpu_messages, mem_messages = db.check_benchmarks()
-            notify = "<!channel> The following %s benchmarks had a significant change in %s:\n"
+            # notify = "<!channel> The following %s benchmarks had a significant change in %s:\n"
+            notify = "The following %s benchmarks had a significant change in %s:\n"
 
             # post max_messages at a time
             max_messages = 9
