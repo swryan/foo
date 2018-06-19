@@ -8,10 +8,8 @@
 #     CSV_FILE : the file name for the benchmark data (Default: RUN_NAME.csv)
 #
 
-RUN_NAME=$1
-
 if [ -n "$1" ]; then
-    RUN_NAME=$2;
+    RUN_NAME=$1;
 else
     RUN_NAME=`date +%Y%m%d_%H%M`
 fi
