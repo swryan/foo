@@ -1,22 +1,29 @@
 #!/bin/bash
+
+# This script submits a job via SLURM to perform benchmarks with testflo
 #
-# This script will run a batch job on the mdao cluster
-# to perform benchmarks.
+# Usage: $0 RUN_NAME CSV_FILE NPROCS
 #
-# Usage: $0 RUN_NAME
-#
-#     RUN_NAME : the name of the job (REQUIRED)
+#     RUN_NAME : the name of the job (Default: YYMMDD_HHMM)
+#     CSV_FILE : the file name for the benchmark data (Default: RUN_NAME.csv)
 #
 
 RUN_NAME=$1
-CSV_FILE=$1.csv
-CMD="testflo --pre_announce -bvs -d $CSV_FILE benchmark/benchmark_beam.py:BenchBeamNP2.benchmark_beam_np2"
 
-#export MPIRUN_ARGS="-v --display-devel-map --display-allocation"
-# --oversubscribe"
+if [ -n "$1" ]; then
+    RUN_NAME=$2;
+else
+    RUN_NAME=`date +%Y%m%d_%H%M`
+fi
 
+if [ -n "$2" ]; then
+    CSV_FILE=$2;
+else
+    CSV_FILE=$RUN_NAME.csv
+fi
 
-sbatch -W -N 1 -J $RUN_NAME <<EOF
+# generate job script
+cat << EOM >$RUN_NAME.sh
 #!/bin/bash
 # Submit only to the mdao partition:
 #SBATCH --partition=mdao
@@ -30,10 +37,6 @@ sbatch -W -N 1 -J $RUN_NAME <<EOF
 # Set the mininum and maximum number of nodes:
 #SBATCH --nodes=1-1
 #
-# CPU affinity:
-#SBATCH --sockets-per-node=1
-#SBATCH --cores-per-socket=1
-#
 # Output files:
 #SBATCH --output=slurm-%x-%j.out.txt
 #SBATCH --error=slurm-%x-%j.err.txt
@@ -41,7 +44,10 @@ sbatch -W -N 1 -J $RUN_NAME <<EOF
 export OMPI_MCA_mpi_warn_on_fork=0
 ulimit -s 10240
 
-# If the MPI library supports PMI2, the hostfile is not needed:
-#srun -n 1 --mpi=pmi2 $CMD
-$CMD
-EOF
+testflo --pre_announce -bvs -d $CSV_FILE
+EOM
+
+# submit the job
+sbatch -W -J $RUN_NAME $RUN_NAME.sh
+
+

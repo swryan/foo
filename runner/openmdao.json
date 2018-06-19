@@ -9,7 +9,7 @@
         "numpy",
         "scipy",
         "mpi4py",
-        "git+https://bitbucket.org/petsc/petsc4py@3.7.0",
+        "petsc4py",
         "~/dev/pyoptsparse"
     ]
 }
