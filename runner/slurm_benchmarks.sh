@@ -1,45 +1,53 @@
 #!/bin/bash
-#
+
 # This script submits a job via SLURM to perform benchmarks with testflo
 #
 # Usage: $0 RUN_NAME CSV_FILE NPROCS
 #
-#     RUN_NAME : the name of the job (REQUIRED)
-#     CSV_FILE : the file name for the benchmark data (REQUIRED)
-#     NPROCS   : the number of processors (optional, default 20)
+#     RUN_NAME : the name of the job (Default: YYMMDD_HHMM)
+#     CSV_FILE : the file name for the benchmark data (Default: RUN_NAME.csv)
 #
 
 RUN_NAME=$1
-CSV_FILE=$2
 
-case $3 in
-    ''|*[!0-9]*) NPROCS=20 ;;
-    *)           NPROCS=$1 ;;
-esac
+if [ -n "$1" ]; then
+    RUN_NAME=$2;
+else
+    RUN_NAME=`date +%Y%m%d_%H%M`
+fi
+
+if [ -n "$2" ]; then
+    CSV_FILE=$2;
+else
+    CSV_FILE=$RUN_NAME.csv
+fi
 
 # generate job script
-cat << EOM >job
+cat << EOM >$RUN_NAME.sh
 #!/bin/bash
+# Submit only to the mdao partition:
+#SBATCH --partition=mdao
+#
+# Don't run on mdao0:
+#SBATCH --exclude=mdao0
+#
+# Prevent other jobs from being scheduled on the allocated node(s):
+#SBATCH --exclusive
+#
+# Set the mininum and maximum number of nodes:
+#SBATCH --nodes=1-1
+#
+# Output files:
+#SBATCH --output=slurm-%x-%j.out.txt
+#SBATCH --error=slurm-%x-%j.err.txt
 
-# USE_PROC_FILES causes I/O erros when using MPI.Spawn
-unset USE_PROC_FILES
+export OMPI_MCA_mpi_warn_on_fork=0
+ulimit -s 10240
 
-# create machinefile
-srun -l -p mdao /bin/hostname | sort -n | awk '{print \$2}' > slurm.hosts
-echo "slurm.hosts:"
-echo "-----------"
-cat slurm.hosts
-
-# top processes before running benchmarks
-ps -eo pid,ppid,user,cmd:60,%mem,%cpu --sort=-%cpu|head -25
-
-# mpirun
-srun -n 1 mpirun -np 1 -machinefile slurm.hosts testflo -n 1 --nompi -bvs -d $CSV_FILE
-
-# release the allocation
-exit
+testflo --pre_announce -bvs -d $CSV_FILE
 EOM
 
-# allocate resources and run the job script (exclude interactive node mdao10)
-salloc -vvv -p mdao -x mdao10 --exclusive --wait-all-nodes=1 -n $NPROCS -J $RUN_NAME bash job
+# submit the job
+sbatch -W -J $RUN_NAME $RUN_NAME.sh
+
 
