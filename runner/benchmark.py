@@ -370,8 +370,7 @@ def activate_env(env_name, dependencies, local_repos):
     pipinstall = "pip install -q --install-option=\"--prefix=" + conda_dir.replace("bin", "envs/"+env_name) + "\" "
 
     # install testflo to do the benchmarking
-    code, out, err = execute_cmd(pipinstall + "git+https://github.com/swryan/testflo@work")
-    #code, out, err = execute_cmd(pipinstall + "git+https://github.com/openmdao/testflo")
+    code, out, err = execute_cmd(pipinstall + "git+https://github.com/openmdao/testflo")
     if (code != 0):
         raise RuntimeError("Failed to install testflo to", env_name, code, out, err)
 
@@ -1322,9 +1321,9 @@ def main(args=None):
             if options.plot:
                 db = BenchmarkDatabase(project_name)
                 if options.plot == 'all':
-                    db.plot_benchmarks(show=True)
+                    db.plot_benchmarks(save=True)
                 else:
-                    db.plot_benchmark_data(options.plot)
+                    db.plot_benchmark_data(options.plot, show=True)
             elif options.dump:
                 db = BenchmarkDatabase(project_name)
                 db.dump()
