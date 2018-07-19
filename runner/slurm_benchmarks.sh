@@ -4,7 +4,7 @@
 #
 # Usage: $0 RUN_NAME CSV_FILE
 #
-#     RUN_NAME : the name of the job (Default: YYMMDD_HHMM)
+#     RUN_NAME : the name of the job (Default: YYMMDD_HHMMSS)
 #     CSV_FILE : the file name for the benchmark data (Default: RUN_NAME.csv)
 #
 
@@ -47,4 +47,3 @@ EOM
 
 # submit the job
 sbatch -W -J $RUN_NAME $RUN_NAME.sh
-

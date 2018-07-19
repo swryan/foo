@@ -372,7 +372,9 @@ def activate_env(env_name, dependencies, local_repos):
     pipinstall = "pip install --install-option=\"--prefix=" + conda_dir.replace("bin", "envs/"+env_name) + "\" "
 
     # install testflo to do the benchmarking
-    code, out, err = execute_cmd(pipinstall + "testflo")
+    code, out, err = execute_cmd(pipinstall + os.path.expanduser("~/dev/testflo"))
+    # code, out, err = execute_cmd(pipinstall + "git+https://github.com/openmdao/testflo")
+    # code, out, err = execute_cmd(pipinstall + "testflo")
     if (code != 0):
         raise RuntimeError("Failed to install testflo to", env_name, code, out, err)
 
@@ -975,8 +977,7 @@ class BenchmarkRunner(object):
 
     def run(self, force=False, keep_env=False, unit_tests=False):
         """
-        determine if a project or any of it's trigger dependencies have
-        changed and run benchmarks if so
+        run benchmarks if project or any of its dependencies have changed
         """
         logging.info("\n************************************************"
                      "\nRunning benchmarks for %s"
@@ -1170,6 +1171,9 @@ class BenchmarkRunner(object):
                     mem_messages = mem_messages[max_messages:]
 
     def run_unittests(self, run_name, trigger_msg):
+        """
+        Use testflo to run unit tests
+        """
         testflo_cmd = "testflo -n 1"
 
         # run testflo command
@@ -1196,7 +1200,7 @@ class BenchmarkRunner(object):
 
     def run_benchmarks(self, run_name, trigger_msg, csv_file):
         """
-        Use testflo to run benchmarks)
+        Use testflo to run benchmarks
         """
         benchmark_cmd = conf.get("benchmark_cmd")
         if benchmark_cmd:
@@ -1216,7 +1220,7 @@ class BenchmarkRunner(object):
 
     def get_trigger_message(self, triggered_by, current_commits):
         """
-        list specific commits (in link form)that caused this bench run
+        list specific commits (in link form) that triggered benchmarks to run
         """
         name = self.project["name"]
 
