@@ -371,7 +371,7 @@ def activate_env(env_name, dependencies, local_repos):
 
     # install testflo to do the benchmarking
     # code, out, err = execute_cmd(pipinstall + "git+https://github.com/openmdao/testflo")
-    code, out, err = execute_cmd(pipinstall + "~/dev/testflo")
+    code, out, err = execute_cmd(pipinstall + os.path.expanduser("~/dev/testflo"))
     if (code != 0):
         raise RuntimeError("Failed to install testflo to", env_name, code, out, err)
 
