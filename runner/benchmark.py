@@ -339,14 +339,16 @@ def activate_env(env_name, dependencies, local_repos):
 
     # add other required packages
     conda_pkgs = " ".join([
-        "pip",          # for installing dependencies
-        "git",          # for cloning git repos
-        "swig",         # for building dependencies
-        "psutil",       # for testflo benchmarking
-        "nomkl",        # TODO: experiment with this
-        "matplotlib",   # for plotting results
-        "curl",         # for uploading files & slack messages
-        "sqlite"        # for backing up the database
+        "git",              # for cloning git repos
+        "pip",              # for installing dependencies
+        "swig",             # for building dependencies
+        "cython",           # for building dependencies
+        "psutil",           # for testflo benchmarking
+        "memory_profiler",  # for testflo benchmarking
+        "nomkl",            # TODO: experiment with this
+        "matplotlib",       # for plotting results
+        "curl",             # for uploading files & slack messages
+        "sqlite"            # for backing up the database
     ])
     cmd = cmd + " " + conda_pkgs
 
@@ -367,10 +369,10 @@ def activate_env(env_name, dependencies, local_repos):
     logging.info("env_name: %s, path: %s", env_name, env["PATH"])
 
     # need to do a pip install with --prefix to get things installed into proper conda env
-    pipinstall = "pip install -q --install-option=\"--prefix=" + conda_dir.replace("bin", "envs/"+env_name) + "\" "
+    pipinstall = "pip install --install-option=\"--prefix=" + conda_dir.replace("bin", "envs/"+env_name) + "\" "
 
     # install testflo to do the benchmarking
-    code, out, err = execute_cmd(pipinstall + "git+https://github.com/openmdao/testflo")
+    code, out, err = execute_cmd(pipinstall + "testflo")
     if (code != 0):
         raise RuntimeError("Failed to install testflo to", env_name, code, out, err)
 
