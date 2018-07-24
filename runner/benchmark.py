@@ -369,12 +369,12 @@ def activate_env(env_name, dependencies, local_repos):
     logging.info("env_name: %s, path: %s", env_name, env["PATH"])
 
     # need to do a pip install with --prefix to get things installed into proper conda env
-    pipinstall = "pip install --install-option=\"--prefix=" + conda_dir.replace("bin", "envs/"+env_name) + "\" "
+    pipinstall = "pip install -q --install-option=\"--prefix=" + conda_dir.replace("bin", "envs/"+env_name) + "\" "
 
     # install testflo to do the benchmarking
-    code, out, err = execute_cmd(pipinstall + os.path.expanduser("~/dev/testflo"))
+    # code, out, err = execute_cmd(pipinstall + os.path.expanduser("~/dev/testflo"))
     # code, out, err = execute_cmd(pipinstall + "git+https://github.com/openmdao/testflo")
-    # code, out, err = execute_cmd(pipinstall + "testflo")
+    code, out, err = execute_cmd(pipinstall + "testflo")
     if (code != 0):
         raise RuntimeError("Failed to install testflo to", env_name, code, out, err)
 
