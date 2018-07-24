@@ -339,14 +339,16 @@ def activate_env(env_name, dependencies, local_repos):
 
     # add other required packages
     conda_pkgs = " ".join([
-        "pip",          # for installing dependencies
-        "git",          # for cloning git repos
-        "swig",         # for building dependencies
-        "psutil",       # for testflo benchmarking
-        "nomkl",        # TODO: experiment with this
-        "matplotlib",   # for plotting results
-        "curl",         # for uploading files & slack messages
-        "sqlite"        # for backing up the database
+        "git",              # for cloning git repos
+        "pip",              # for installing dependencies
+        "swig",             # for building dependencies
+        "cython",           # for building dependencies
+        "psutil",           # for testflo benchmarking
+        "memory_profiler",  # for testflo benchmarking
+        "nomkl",            # TODO: experiment with this
+        "matplotlib",       # for plotting results
+        "curl",             # for uploading files & slack messages
+        "sqlite"            # for backing up the database
     ])
     cmd = cmd + " " + conda_pkgs
 
@@ -357,7 +359,7 @@ def activate_env(env_name, dependencies, local_repos):
     # activate environment by modifying PATH
     path = env["PATH"].split(os.pathsep)
     for dirname in path:
-        if "anaconda" in dirname:
+        if "anaconda" in dirname or "miniconda" in dirname:
             conda_dir = dirname
             path.remove(conda_dir)
             break
@@ -370,7 +372,9 @@ def activate_env(env_name, dependencies, local_repos):
     pipinstall = "pip install -q --install-option=\"--prefix=" + conda_dir.replace("bin", "envs/"+env_name) + "\" "
 
     # install testflo to do the benchmarking
-    code, out, err = execute_cmd(pipinstall + "git+https://github.com/openmdao/testflo")
+    # code, out, err = execute_cmd(pipinstall + os.path.expanduser("~/dev/testflo"))
+    # code, out, err = execute_cmd(pipinstall + "git+https://github.com/openmdao/testflo")
+    code, out, err = execute_cmd(pipinstall + "testflo")
     if (code != 0):
         raise RuntimeError("Failed to install testflo to", env_name, code, out, err)
 
@@ -973,8 +977,7 @@ class BenchmarkRunner(object):
 
     def run(self, force=False, keep_env=False, unit_tests=False):
         """
-        determine if a project or any of it's trigger dependencies have
-        changed and run benchmarks if so
+        run benchmarks if project or any of its dependencies have changed
         """
         logging.info("\n************************************************"
                      "\nRunning benchmarks for %s"
@@ -1168,6 +1171,9 @@ class BenchmarkRunner(object):
                     mem_messages = mem_messages[max_messages:]
 
     def run_unittests(self, run_name, trigger_msg):
+        """
+        Use testflo to run unit tests
+        """
         testflo_cmd = "testflo -n 1"
 
         # run testflo command
@@ -1194,7 +1200,7 @@ class BenchmarkRunner(object):
 
     def run_benchmarks(self, run_name, trigger_msg, csv_file):
         """
-        Use testflo to run benchmarks)
+        Use testflo to run benchmarks
         """
         benchmark_cmd = conf.get("benchmark_cmd")
         if benchmark_cmd:
@@ -1214,7 +1220,7 @@ class BenchmarkRunner(object):
 
     def get_trigger_message(self, triggered_by, current_commits):
         """
-        list specific commits (in link form)that caused this bench run
+        list specific commits (in link form) that triggered benchmarks to run
         """
         name = self.project["name"]
 

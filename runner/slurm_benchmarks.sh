@@ -2,16 +2,16 @@
 
 # This script submits a job via SLURM to perform benchmarks with testflo
 #
-# Usage: $0 RUN_NAME CSV_FILE NPROCS
+# Usage: $0 RUN_NAME CSV_FILE
 #
-#     RUN_NAME : the name of the job (Default: YYMMDD_HHMM)
+#     RUN_NAME : the name of the job (Default: YYMMDD_HHMMSS)
 #     CSV_FILE : the file name for the benchmark data (Default: RUN_NAME.csv)
 #
 
 if [ -n "$1" ]; then
     RUN_NAME=$1;
 else
-    RUN_NAME=`date +%Y%m%d_%H%M`
+    RUN_NAME=`date +%Y%m%d_%H%M%S`
 fi
 
 if [ -n "$2" ]; then
@@ -47,5 +47,3 @@ EOM
 
 # submit the job
 sbatch -W -J $RUN_NAME $RUN_NAME.sh
-
-

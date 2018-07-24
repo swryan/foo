@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# usage: mpirun -n [#] python mpirun.py [testspec] [host] [port] [key]
+# usage: $0 -n [#] python mpirun.py [testspec] [host] [port] [key]
 #
 procs=$2
 testspec=$5
