@@ -359,7 +359,7 @@ def activate_env(env_name, dependencies, local_repos):
     # activate environment by modifying PATH
     path = env["PATH"].split(os.pathsep)
     for dirname in path:
-        if "anaconda" in dirname:
+        if "anaconda" in dirname or "miniconda" in dirname:
             conda_dir = dirname
             path.remove(conda_dir)
             break
