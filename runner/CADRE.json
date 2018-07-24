@@ -1,5 +1,5 @@
 {
-    "repository": "git@github.com:swryan/CADRE",
+    "repository": "git@github.com:openmdao/CADRE",
 
     "triggers": [
         "git@github.com:openmdao/OpenMDAO",
