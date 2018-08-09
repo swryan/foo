@@ -1,0 +1,15 @@
+{
+    "repository": "git@github.com:openmdao/dymos",
+
+    "triggers": [
+        "git@github.com:openmdao/OpenMDAO",
+        "git@github.com:openmdao/MBI"
+    ],
+
+    "dependencies": [
+        "python=3",
+        "~/dev/pyoptsparse"
+    ]
+}
+
+
