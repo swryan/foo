@@ -8,6 +8,7 @@
 
     "dependencies": [
         "python=3",
+        "petsc4py",
         "~/dev/pyoptsparse"
     ]
 }
