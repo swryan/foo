@@ -1,5 +1,5 @@
 {
-    "repository": "git@github.com:openmdao/pycycle3",
+    "repository": "git@github.com:openmdao/pycycle",
 
     "triggers": [
         "git@github.com:openmdao/OpenMDAO"
