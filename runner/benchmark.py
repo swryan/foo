@@ -124,7 +124,7 @@ def execute_cmd(cmd):
     """
     logging.info("> %s", cmd)
     args = shlex.split(cmd)
-    proc = Popen(args, stdout=PIPE, stderr=PIPE, env=env)
+    proc = Popen(args, stdout=PIPE, stderr=PIPE, env=env, universal_newlines=True)
     out, err = proc.communicate()
     rc = proc.returncode
     if rc:
@@ -344,7 +344,7 @@ def activate_env(env_name, dependencies, local_repos):
         "swig",             # for building dependencies
         "cython",           # for building dependencies
         "psutil",           # for testflo benchmarking
-        "memory_profiler",  # for testflo benchmarking
+        # "memory_profiler",  # for testflo benchmarking
         "nomkl",            # TODO: experiment with this
         "matplotlib",       # for plotting results
         "curl",             # for uploading files & slack messages
@@ -604,7 +604,7 @@ class BenchmarkDatabase(object):
             for dep, ver in installed.items():
                 self.cursor.execute("INSERT INTO InstalledDeps VALUES(?, ?, ?)", (timestamp, dep, ver))
 
-    def check_benchmarks(self, timestamp=None, threshold=15.):
+    def check_benchmarks(self, timestamp=None, threshold=20.):
         """
         Check the benchmark data from the given timestamp for any benchmark with a
         significant change (greater than threshold) in elapsed time or memory usage.
@@ -1144,7 +1144,7 @@ class BenchmarkRunner(object):
                 for plot_file in summary_plots:
                     self.slack.post_image("", "/".join([image_url, plot_file]))
             else:
-                self.slack.post_message("No benchmarks found.")
+                self.slack.post_message("No benchmark history plots generated.")
 
             # check benchmarks for significant changes & post any resulting messages
             cpu_messages, mem_messages = db.check_benchmarks()
