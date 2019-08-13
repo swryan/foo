@@ -7,6 +7,7 @@ from subprocess import Popen, PIPE
 
 import sys
 import os
+import os.path
 import shlex
 import sqlite3
 import time
@@ -487,7 +488,7 @@ class Slack(object):
 
         code, out, err = execute_cmd(cmd)
         if code:
-            logging.warn("Could not post msg to slack: %d\n%s\n%s", code, out, err)
+            logging.warning("Could not post msg to slack: %d\n%s\n%s", code, out, err)
 
         return code
 
@@ -508,47 +509,53 @@ class Slack(object):
         code, out, err = execute_cmd(cmd)
 
         if code:
-            logging.warn("Could not post file to slack:\n%s\n%s", out, err)
+            logging.warning("Could not post file to slack:\n%s\n%s", out, err)
 
         return code
 
 
 class BenchmarkDatabase(object):
+    """
+    this class encapsulates logic that operates on a benchmark database
+    """
     def __init__(self, name):
         self.name = name
         self.dbname = name+".db"
-        self.conn   = sqlite3.connect(self.dbname)
-        self.cursor = self.conn.cursor()
+        self.connection = sqlite3.connect(self.dbname)
+
+        logging.info('Connected to database: ' + os.path.abspath(self.dbname))
 
     def _ensure_commits(self):
         """
         if the commit tables have not been created yet, create them
         """
-        # a table containing the last benchmarked commit for each trigger
-        # repository
-        self.cursor.execute("CREATE TABLE if not exists LastCommits"
-                            " (Trigger TEXT UNIQUE, LastCommitID TEXT)")
+        with self.connection as c:
+            # a table containing the last benchmarked commit for each trigger
+            # repository
+            c.execute("CREATE TABLE if not exists LastCommits"
+                      " (Trigger TEXT UNIQUE, LastCommitID TEXT)")
 
-        # a table containing the commit ID for each trigger repository
-        # for a given benchmark run (specified by DateTime)
-        self.cursor.execute("CREATE TABLE if not exists Commits"
-                            " (DateTime INT, Trigger TEXT, CommitID TEXT,"
-                            "  PRIMARY KEY (DateTime, Trigger))")
+            # a table containing the commit ID for each trigger repository
+            # for a given benchmark run (specified by DateTime)
+            c.execute("CREATE TABLE if not exists Commits"
+                      " (DateTime INT, Trigger TEXT, CommitID TEXT,"
+                      "  PRIMARY KEY (DateTime, Trigger))")
 
     def _ensure_benchmark_data(self):
         """
         if the benchmark data tables have not been created yet, create them
         """
-        # a table containing the status, elapsed time and memory usage for each
-        # benchmark in a run
-        self.cursor.execute("CREATE TABLE if not exists BenchmarkData"
-                            " (DateTime INT, Spec TEXT, Status TEXT, Elapsed REAL, Memory REAL,"
-                            "  LoadAvg1m REAL, LoadAvg5m REAL, LoadAvg15m REAL, PRIMARY KEY (DateTime, Spec))")
+        with self.connection as c:
+            # a table containing the status, elapsed time and memory usage for each
+            # benchmark in a run
+            c.execute("CREATE TABLE if not exists BenchmarkData"
+                      " (DateTime INT, Spec TEXT, Status TEXT, Elapsed REAL, Memory REAL,"
+                      "  LoadAvg1m REAL, LoadAvg5m REAL, LoadAvg15m REAL, PRIMARY KEY (DateTime, Spec))")
 
-        # a table containing the versions of all installed dependencies for a run
-        self.cursor.execute("CREATE TABLE if not exists InstalledDeps"
-                            " (DateTime INT,  InstalledDep TEXT, Version TEXT,"
-                            "  PRIMARY KEY (DateTime, InstalledDep))")
+            # a table containing the versions of all installed dependencies for a run
+            c.execute("CREATE TABLE if not exists InstalledDeps"
+                      " (DateTime INT,  InstalledDep TEXT, Version TEXT,"
+                      "  PRIMARY KEY (DateTime, InstalledDep))")
 
     def get_last_commit(self, trigger):
         """
@@ -557,9 +564,11 @@ class BenchmarkDatabase(object):
         """
         self._ensure_commits()
 
-        self.cursor.execute("SELECT LastCommitID FROM LastCommits "
-                            "WHERE Trigger == ?", (trigger,))
-        rows = self.cursor.fetchall()
+        c = self.connection.cursor()
+        c.execute("SELECT LastCommitID FROM LastCommits WHERE Trigger == ?", (trigger,))
+
+        rows = c.fetchall()
+
         if rows:
             return rows[0][0]
         else:
@@ -571,10 +580,11 @@ class BenchmarkDatabase(object):
         """
         self._ensure_commits()
 
-        for trigger, commit in commits.items():
-            logging.info('INSERTING COMMIT %s %s', trigger, commit)
-            self.cursor.execute('INSERT OR REPLACE INTO LastCommits VALUES (?, ?)', (trigger, str(commit)))
-            self.cursor.execute('INSERT INTO Commits VALUES (?, ?, ?)', (timestamp, trigger, str(commit)))
+        with self.connection as c:
+            for trigger, commit in commits.items():
+                logging.info('INSERTING COMMIT %s %s', trigger, commit)
+                c.execute('INSERT OR REPLACE INTO LastCommits VALUES (?, ?)', (trigger, str(commit)))
+                c.execute('INSERT INTO Commits VALUES (?, ?, ?)', (timestamp, trigger, str(commit)))
 
     def add_benchmark_data(self, commits, filename, installed):
         """
@@ -585,24 +595,26 @@ class BenchmarkDatabase(object):
 
         data_added = False
 
-        with open(filename, 'r') as csvfile:
-            reader = csv.reader(csvfile)
-            for row in reader:
-                logging.info('INSERTING BenchmarkData %s' % str(row))
-                try:
-                    spec = row[1].rsplit('/', 1)[1]  # remove path from benchmark file name
-                    self.cursor.execute("INSERT INTO BenchmarkData VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-                                        (row[0], spec, row[2], float(row[3]), float(row[4]),
-                                         float(row[5]), float(row[6]), float(row[7])))
-                    data_added = True
-                except IndexError:
-                    logging.warn("Invalid benchmark data found in results:\n %s", str(row))
+        with self.connection as c:
+            with open(filename, 'r') as csvfile:
+                reader = csv.reader(csvfile)
 
-        if data_added:
-            timestamp = row[0]  # row[0] is the timestamp for this set of benchmark data
-            self.update_commits(commits, timestamp)
-            for dep, ver in installed.items():
-                self.cursor.execute("INSERT INTO InstalledDeps VALUES(?, ?, ?)", (timestamp, dep, ver))
+                for row in reader:
+                    logging.info('INSERTING BenchmarkData %s' % str(row))
+                    try:
+                        spec = row[1].rsplit('/', 1)[1]  # remove path from benchmark file name
+                        c.execute("INSERT INTO BenchmarkData VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                                  (row[0], spec, row[2], float(row[3]), float(row[4]),
+                                   float(row[5]), float(row[6]), float(row[7])))
+                        data_added = True
+                    except IndexError:
+                        logging.warning("Invalid benchmark data found in results:\n %s", str(row))
+
+            if data_added:
+                timestamp = row[0]  # row[0] is the timestamp for this set of benchmark data
+                self.update_commits(commits, timestamp)
+                for dep, ver in installed.items():
+                    c.execute("INSERT INTO InstalledDeps VALUES(?, ?, ?)", (timestamp, dep, ver))
 
     def check_benchmarks(self, timestamp=None, threshold=20.):
         """
@@ -615,13 +627,14 @@ class BenchmarkDatabase(object):
         logging.info("Checking benchmarks for timestamp: %s", timestamp)
 
         if timestamp is None:
-            for row in self.cursor.execute("SELECT * FROM BenchmarkData "
-                                           "ORDER BY DateTime DESC LIMIT 1"):
-                timestamp = row[0]  # row[0] is the timestamp for this set of benchmark data
+            with self.connection as c:
+                for row in c.execute("SELECT * FROM BenchmarkData "
+                                     "ORDER BY DateTime DESC LIMIT 1"):
+                    timestamp = row[0]  # row[0] is the timestamp for this set of benchmark data
 
         if timestamp is None:
             msg = "No benchmark data found"
-            logging.warn(msg)
+            logging.warning(msg)
             return [], []
 
         date_str = datetime.fromtimestamp(timestamp)
@@ -629,18 +642,19 @@ class BenchmarkDatabase(object):
         curr_data = self.get_data_for_timestamp(timestamp)
         if not curr_data:
             msg = "No benchmark data found for timestamp %d (%s)" % (timestamp, date_str)
-            logging.warn(msg)
+            logging.warning(msg)
             return [], []
 
         prev_time = None
-        for row in self.cursor.execute("SELECT * FROM BenchmarkData "
-                                       "WHERE DateTime<? and Status=='OK' "
-                                       "ORDER BY DateTime DESC LIMIT 1", (timestamp,)):
-            prev_time = row[0]  # row[0] is the timestamp for this set of benchmark data
+        with self.connection as c:
+            for row in c.execute("SELECT * FROM BenchmarkData "
+                                 "WHERE DateTime<? and Status=='OK' "
+                                 "ORDER BY DateTime DESC LIMIT 1", (timestamp,)):
+                prev_time = row[0]  # row[0] is the timestamp for this set of benchmark data
 
         if not prev_time:
             msg = "No benchmark data found previous to timestamp %d (%s)" % (timestamp, date_str)
-            logging.warn(msg)
+            logging.warning(msg)
             return [], []
 
         prev_data = self.get_data_for_timestamp(prev_time)
@@ -696,17 +710,18 @@ class BenchmarkDatabase(object):
         """
         data = {}
 
-        for row in self.cursor.execute("SELECT * FROM BenchmarkData "
-                                       "WHERE DateTime=? and Status=='OK' "
-                                       "ORDER BY DateTime", (timestamp,)):
-            data.setdefault('timestamp', []).append(row[0])
-            data.setdefault('spec', []).append(row[1])
-            data.setdefault('status', []).append(row[2])
-            data.setdefault('elapsed', []).append(row[3])
-            data.setdefault('memory', []).append(row[4])
-            data.setdefault('load_1m', []).append(row[5])
-            data.setdefault('load_5m', []).append(row[6])
-            data.setdefault('load_15m', []).append(row[7])
+        with self.connection as c:
+            for row in c.execute("SELECT * FROM BenchmarkData "
+                                 "WHERE DateTime=? and Status=='OK' "
+                                 "ORDER BY DateTime", (timestamp,)):
+                data.setdefault('timestamp', []).append(row[0])
+                data.setdefault('spec', []).append(row[1])
+                data.setdefault('status', []).append(row[2])
+                data.setdefault('elapsed', []).append(row[3])
+                data.setdefault('memory', []).append(row[4])
+                data.setdefault('load_1m', []).append(row[5])
+                data.setdefault('load_5m', []).append(row[6])
+                data.setdefault('load_15m', []).append(row[7])
 
         return data
 
@@ -716,28 +731,27 @@ class BenchmarkDatabase(object):
         """
         data = {}
 
+        c = self.connection.cursor()
+
         if since:
-            for row in self.cursor.execute("SELECT * FROM BenchmarkData "
-                                           "WHERE Spec=? and Status=='OK' and DateTime>? "
-                                           "ORDER BY DateTime", (spec, since)):
-                data.setdefault('timestamp', []).append(row[0])
-                data.setdefault('status', []).append(row[2])
-                data.setdefault('elapsed', []).append(row[3])
-                data.setdefault('memory', []).append(row[4])
-                data.setdefault('LoadAvg1m', []).append(row[5])
-                data.setdefault('LoadAvg5m', []).append(row[6])
-                data.setdefault('LoadAvg15m', []).append(row[7])
+            c.execute("SELECT * FROM BenchmarkData "
+                      "WHERE Spec=? and Status=='OK' and DateTime>? "
+                      "ORDER BY DateTime", (spec, since))
         else:
-            for row in self.cursor.execute("SELECT * FROM BenchmarkData "
-                                           "WHERE Spec=? and Status=='OK' "
-                                           "ORDER BY DateTime", (spec,)):
-                data.setdefault('timestamp', []).append(row[0])
-                data.setdefault('status', []).append(row[2])
-                data.setdefault('elapsed', []).append(row[3])
-                data.setdefault('memory', []).append(row[4])
-                data.setdefault('LoadAvg1m', []).append(row[5])
-                data.setdefault('LoadAvg5m', []).append(row[6])
-                data.setdefault('LoadAvg15m', []).append(row[7])
+            c.execute("SELECT * FROM BenchmarkData "
+                      "WHERE Spec=? and Status=='OK' "
+                      "ORDER BY DateTime", (spec,))
+
+        rows = c.fetchall()
+
+        for row in rows:
+            data.setdefault('timestamp', []).append(row[0])
+            data.setdefault('status', []).append(row[2])
+            data.setdefault('elapsed', []).append(row[3])
+            data.setdefault('memory', []).append(row[4])
+            data.setdefault('LoadAvg1m', []).append(row[5])
+            data.setdefault('LoadAvg5m', []).append(row[6])
+            data.setdefault('LoadAvg15m', []).append(row[7])
 
         return data
 
@@ -746,7 +760,7 @@ class BenchmarkDatabase(object):
         dump database to SQL file
         """
         with open(self.dbname+'.sql', 'w') as f:
-            for line in self.conn.iterdump():
+            for line in self.connection.iterdump():
                 f.write('%s\n' % line)
 
     def plot_all(self, show=False, save=True):
@@ -756,8 +770,9 @@ class BenchmarkDatabase(object):
         self._ensure_benchmark_data()
 
         specs = []
-        for row in self.cursor.execute("SELECT DISTINCT Spec FROM BenchmarkData"):
-            specs.append(row[0])
+        with self.connection as c:
+            for row in c.execute("SELECT DISTINCT Spec FROM BenchmarkData"):
+                specs.append(row[0])
 
         filenames = []
         for spec in specs:
@@ -767,8 +782,9 @@ class BenchmarkDatabase(object):
 
     def get_specs(self):
         specs = []
-        for row in self.cursor.execute("SELECT DISTINCT Spec FROM BenchmarkData"):
-            specs.append(row[0])
+        with self.connection as c:
+            for row in c.execute("SELECT DISTINCT Spec FROM BenchmarkData"):
+                specs.append(row[0])
         return specs
 
     def plot_benchmark_data(self, spec=None, show=False, save=False):
@@ -792,7 +808,7 @@ class BenchmarkDatabase(object):
             data = self.get_data_for_spec(spec)
 
             if not data:
-                logging.warn("No data to plot for %s", spec)
+                logging.warning("No data to plot for %s", spec)
                 return
 
             timestamp = np.array(data['timestamp'])
@@ -945,6 +961,12 @@ class BenchmarkDatabase(object):
         create a local backup database, rsync it to destination
         """
         name = self.dbname
+
+        # first save the previous backup, if any
+        save_cmd = "mv -f " + name + ".bak " + name + ".prev"
+        code, out, err = execute_cmd(save_cmd)
+
+        # create a new backup of the current database and upload it
         backup_cmd = "sqlite3 " + name + " \".backup " + name + ".bak\""
         code, out, err = execute_cmd(backup_cmd)
         if not code:
@@ -1179,7 +1201,7 @@ class BenchmarkRunner(object):
         # run testflo command
         code, out, err = execute_cmd(testflo_cmd)
         logging.info(out)
-        logging.warn(err)
+        logging.warning(err)
 
         if code:
             # an expected failure will return an error code, check fail count
