@@ -1091,8 +1091,9 @@ class BenchmarkRunner(object):
                 with repo(project["repository"], project.get("branch", None)):
                     logging.info("========== INSTALL PROJ & RUN ==========")
 
-                    # install project
-                    execute_cmd("pip install -q -e .")
+                    # install project, use custom install command if provided
+                    install_cmd = project.get("install", "pip install -q -e .")
+                    execute_cmd(install_cmd)
 
                     # run the unit tests if requested and record current_commits if it fails
                     if unit_tests:

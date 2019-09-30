@@ -4,8 +4,10 @@
     "triggers": [
     ],
 
+    "install": "pip install -q -e .[all]",
+
     "dependencies": [
-        "python=2",
+        "python=3",
         "numpy",
         "scipy",
         "petsc4py",
