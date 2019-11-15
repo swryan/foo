@@ -1197,7 +1197,7 @@ class BenchmarkRunner(object):
         """
         Use testflo to run unit tests
         """
-        testflo_cmd = "testflo -n 1"
+        testflo_cmd = "testflo -n 1 --pre_announce"
 
         # run testflo command
         code, out, err = execute_cmd(testflo_cmd)

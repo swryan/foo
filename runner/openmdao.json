@@ -10,7 +10,7 @@
         "python=3",
         "numpy",
         "scipy",
-        "petsc4py",
+        "petsc4py==3.11",
         "~/dev/pyoptsparse"
     ]
 }
