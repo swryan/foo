@@ -9,9 +9,8 @@
         "python=3",
         "numpy>=1.14",
         "scipy",
-        "mpi4py",
         "petsc4py==3.11",
-        "~/dev/pyoptsparse"
+        "/mdao/w/pyoptsparse"
     ]
 }
 
