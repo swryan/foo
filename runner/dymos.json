@@ -11,7 +11,7 @@
         "numpy",
         "scipy",
         "petsc4py==3.11",
-        "~/dev/pyoptsparse"
+        "/mdao/w/pyoptsparse"
     ]
 }
 
