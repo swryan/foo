@@ -7,7 +7,7 @@
     "install": "pip install -q -e .[all]",
 
     "dependencies": [
-        "python=3",
+        "python=3.7",
         "numpy",
         "scipy",
         "petsc4py==3.11",

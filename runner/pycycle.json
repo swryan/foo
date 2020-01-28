@@ -6,7 +6,7 @@
     ],
 
     "dependencies": [
-        "python=3",
+        "python=3.7",
         "numpy>=1.14",
         "scipy",
         "petsc4py==3.11",
