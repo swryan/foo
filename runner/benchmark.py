@@ -341,7 +341,7 @@ def activate_env(env_name, dependencies, local_repos):
     # add other required packages
     conda_pkgs = " ".join([
         "git",              # for cloning git repos
-        "pip",              # for installing dependencies
+        "pip<20.0",         # for installing dependencies
         "swig",             # for building dependencies
         "cython",           # for building dependencies
         "psutil",           # for testflo benchmarking
@@ -927,16 +927,16 @@ class BenchmarkDatabase(object):
                         pyplot.plot_date(timestamp, memory/max_memory, '.-', color=color, label=spec)
                         pyplot.ylabel('memory usage')
 
-                # format the ticks
-                a1.set_xticks([])
-                a2.xaxis.set_minor_locator(mondays)
-                a2.xaxis.set_major_formatter(weekFmt)
-                for tick in a2.xaxis.get_major_ticks():
-                    tick.label.set_fontsize('x-small')
-                # pyplot.xticks(rotation=45)
+                        # format the ticks
+                        a1.set_xticks([])
+                        a2.xaxis.set_minor_locator(mondays)
+                        a2.xaxis.set_major_formatter(weekFmt)
+                        for tick in a2.xaxis.get_major_ticks():
+                            tick.label.set_fontsize('x-small')
+                        # pyplot.xticks(rotation=45)
 
-                a1.set_ylim(-0.1, 1.1)
-                a2.set_ylim(-0.1, 1.1)
+                        a1.set_ylim(-0.1, 1.1)
+                        a2.set_ylim(-0.1, 1.1)
 
                 pyplot.legend(plot_specs, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
 
