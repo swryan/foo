@@ -7,10 +7,10 @@
     "install": "pip install -q -e .[all]",
 
     "dependencies": [
-        "python=3.7",
+        "python=3",
         "numpy",
         "scipy",
-        "petsc4py==3.11",
+        "git+https://bitbucket.org/petsc/petsc4py.git@maint-3.11",
         "/mdao/w/pyoptsparse"
     ]
 }
