@@ -6,10 +6,11 @@
     ],
 
     "dependencies": [
-        "python=3.7",
-        "numpy>=1.14",
+        "python=3",
+        "numpy",
         "scipy",
-        "petsc4py==3.11",
+        "petsc4py",
+        "sqlitedict",
         "/mdao/w/pyoptsparse"
     ]
 }

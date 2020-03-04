@@ -10,6 +10,7 @@
         "python=2",
         "numpy",
         "parameterized",
-        "~/dev/pyoptsparse"
+        "sqlitedict",
+        "/mdao/w/pyoptsparse"
     ]
 }
