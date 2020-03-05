@@ -7,9 +7,10 @@
     ],
 
     "dependencies": [
-        "python=2",
+        "python=3",
         "numpy",
         "parameterized",
+        "petsc4py",
         "sqlitedict",
         "/mdao/w/pyoptsparse"
     ]
