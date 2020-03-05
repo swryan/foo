@@ -4,13 +4,14 @@
     "triggers": [
     ],
 
-    "install": "pip install -q -e .[all]",
+    "extras": "[all]",
 
     "dependencies": [
         "python=3",
         "numpy",
         "scipy",
-        "git+https://bitbucket.org/petsc/petsc4py.git@maint-3.11",
+        "petsc4py",
+        "sqlitedict",
         "/mdao/w/pyoptsparse"
     ]
 }
