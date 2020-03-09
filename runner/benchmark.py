@@ -1110,7 +1110,7 @@ class BenchmarkRunner(object):
 
                     # install project, with any specified extras
                     extras = project.get("extras", "")
-                    install("."+extras, prefix=env_path)
+                    install("."+extras, options="-e", prefix=env_path)
 
                     # run the unit tests if requested and record current_commits if it fails
                     if unit_tests:
