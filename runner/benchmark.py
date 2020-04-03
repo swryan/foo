@@ -433,12 +433,14 @@ class CondaEnv(object):
         """
         pipinstall = "%s -m pip install %s %s%s " % (self.python, options, package, extras)
 
-        code, out, err = execute_cmd(pipinstall)
+        with conda(self):
+            code, out, err = execute_cmd(pipinstall)
 
         if (code != 0) and package == ".":
             logging.info("pip install failed, trying with 'python setup.py'")
             # need to install with --prefix to get things installed into proper conda env
-            code, out, err = execute_cmd("python setup.py install --prefix=%s" % self.env_path)
+            with conda(self):
+                code, out, err = execute_cmd("python setup.py install --prefix=%s" % self.env_path)
 
         if (code != 0):
             logging.info(out)
@@ -449,7 +451,7 @@ class CondaEnv(object):
         Deactivate and optionally remove a conda env at the end of a benchmarking run.
         """
         if not keep_env:
-            conda_delete = "conda env remove -q -y --name " + name
+            conda_delete = "conda env remove -q -y --name " + self.name
             code, out, err = execute_cmd(conda_delete)
             return code
 
