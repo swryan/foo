@@ -444,7 +444,7 @@ class CondaEnv(object):
 
         if (code != 0):
             logging.info(out)
-            raise RuntimeError("Failed to install %s to %s:" % (package, prefix), code, err)
+            raise RuntimeError("Failed to install %s:" % package, code, err)
 
     def deactivate(self, keep_env):
         """
