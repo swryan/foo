@@ -400,9 +400,6 @@ class CondaEnv(object):
         self.env["PATH"] = prepend_path(self.env_path+"/bin", (os.pathsep).join(path))
         logging.info("env_name: %s, path: %s" % (name, self.env["PATH"]))
 
-        # eval "$(conda shell.bash hook)"
-        # conda activate $name
-
         # install dependencies
         for dependency in dependencies:
             # install the proper version of testflo to do the benchmarking
@@ -451,15 +448,6 @@ class CondaEnv(object):
         """
         Deactivate and optionally remove a conda env at the end of a benchmarking run.
         """
-        path = env["PATH"].split(os.pathsep)
-        logging.info("PATH AT FIRST: %s" % env["PATH"])
-        for dirname in path:
-            if "anaconda" in dirname:
-                path.remove(dirname)
-                break
-        env["PATH"] = prepend_path(env["ORIG_CONDA_DIR"], (os.pathsep).join(path))
-        logging.info("PATH NOW: %s", env["PATH"])
-
         if not keep_env:
             conda_delete = "conda env remove -q -y --name " + name
             code, out, err = execute_cmd(conda_delete)
@@ -1174,7 +1162,7 @@ class BenchmarkRunner(object):
                         db.backup()
 
                 # clean up environment
-                conda_env.deactivate(run_name, keep_env)
+                conda_env.deactivate(keep_env)
 
         # close the log file for this run
         close_log_file()
