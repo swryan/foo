@@ -31,6 +31,7 @@ env = os.environ.copy()
 
 benchmark_dir = os.path.abspath(os.path.dirname(__file__))
 
+
 #
 # default configuration options
 #
@@ -127,6 +128,7 @@ def execute_cmd(cmd):
     args = shlex.split(cmd)
     proc = Popen(args, stdout=PIPE, stderr=PIPE, env=env, universal_newlines=True)
     out, err = proc.communicate()
+
     rc = proc.returncode
     if rc:
         logging.info("RC: %d", rc)
@@ -134,6 +136,7 @@ def execute_cmd(cmd):
         logging.debug(out)
     if rc and err.strip():  # disregard inconsequential stderr output
         logging.debug("STDERR:\n%s", err)
+
     return rc, out, err
 
 
@@ -253,6 +256,22 @@ def repo(repository, branch=None):
         os.chdir(prev_dir)
 
 
+@contextmanager
+def conda(conda):
+    """
+    activate conda environment (switching out global env).
+    """
+    global env
+    save_env = env
+    env = conda.env
+
+    logging.info('> switching to Conda environment %s', conda.name)
+    try:
+        yield
+    finally:
+        logging.info('> restoring environment (from %s)', conda.name)
+        env = save_env
+
 #
 # repository helpers
 #
@@ -321,130 +340,131 @@ def get_current_commit(repository):
 
 
 #
-# anaconda helpers
-#
-
-def activate_env(env_name, dependencies, local_repos):
-    """
-    Create and activate a conda env, install dependencies and then
-    any local repositories
-
-    Return the env path.
-    """
-    logging.info("============= ACTIVATE ENV =============")
-
-    cmd = "conda create -y -q -n " + env_name
-
-    # handle python and numpy/scipy dependencies
-    for dep in dependencies:
-        if dep.startswith("python") or dep.startswith("numpy") or dep.startswith("scipy"):
-            cmd = cmd + " " + dep
-
-    # add other required packages
-    conda_pkgs = " ".join([
-        "git",              # for cloning git repos
-        "pip<20.0",         # for installing dependencies
-        "swig",             # for building dependencies
-        "cython",           # for building dependencies
-        "psutil",           # for testflo benchmarking
-        # "memory_profiler",  # for testflo benchmarking
-        "nomkl",            # TODO: experiment with this
-        "matplotlib",       # for plotting results
-        "curl",             # for uploading files & slack messages
-        "sqlite"            # for backing up the database
-    ])
-    cmd = cmd + " " + conda_pkgs
-
-    code, out, err = execute_cmd(cmd)
-    if (code != 0):
-        raise RuntimeError("Failed to create conda environment", env_name, code, out, err)
-
-    # activate environment by modifying PATH
-    path = env["PATH"].split(os.pathsep)
-    for dirname in path:
-        if "anaconda" in dirname or "miniconda" in dirname:
-            conda_dir = dirname
-            path.remove(conda_dir)
-            break
-    env["ORIG_CONDA_DIR"] = conda_dir
-    env_path = conda_dir.replace("bin", "envs/"+env_name)
-    env["PATH"] = prepend_path(env_path+"/bin", (os.pathsep).join(path))
-
-    logging.info("env_name: %s, path: %s" % (env_name, env["PATH"]))
-
-    # install dependencies
-    for dependency in dependencies:
-        # install the proper version of testflo to do the benchmarking
-        if dependency.startswith("python=3"):
-            install("testflo", options="", prefix=env_path)
-        elif dependency.startswith("python=2"):
-            install("testflo<1.4", options="", prefix=env_path)
-
-        logging.info("Installing dependency: %s" % dependency)
-        if dependency.startswith("~") or dependency.startswith("/"):
-            with cd(os.path.expanduser(dependency)):
-                if os.path.exists('requirements.txt'):
-                    install("requirements.txt", options="-r", prefix=env_path)
-                install(".", options="", prefix=env_path)
-        # python, numpy and scipy are installed when the env is created
-        elif (not dependency.startswith("python=") and
-              not dependency.startswith("numpy") and not dependency.startswith("scipy")):
-            install(dependency, prefix=env_path)
-
-    # install from local repos
-    for local_repo in local_repos:
-        logging.info("Installing from local repo: %s" % local_repo)
-        with repo(local_repo):
-            if os.path.exists('requirements.txt'):
-                install("requirements.txt", options="-r", prefix=env_path)
-            install(".", prefix=env_path)
-
-    return env_path
-
-
-def remove_env(env_name, keep_env):
-    """
-    Deactivate and remove a conda env at the end of a benchmarking run.
-    """
-    path = env["PATH"].split(os.pathsep)
-    logging.info("PATH AT FIRST: %s" % env["PATH"])
-    for dirname in path:
-        if "anaconda" in dirname:
-            path.remove(dirname)
-            break
-    env["PATH"] = prepend_path(env["ORIG_CONDA_DIR"], (os.pathsep).join(path))
-    logging.info("PATH NOW: %s", env["PATH"])
-
-    if not keep_env:
-        conda_delete = "conda env remove -q -y --name " + env_name
-        code, out, err = execute_cmd(conda_delete)
-        return code
-
-
-def install(package, extras="", prefix="", options="-q"):
-    """
-    Install a package.
-    """
-    pipinstall = "pip install %s %s%s " % (options, package, extras)
-
-    # need to do a pip install with --prefix to get things installed into proper conda env
-    if prefix:
-        pipinstall += "--install-option=\"--prefix=%s\" " % prefix
-
-    code, out, err = execute_cmd(pipinstall)
-
-    if (code != 0) and package == ".":
-        logging.info("pip install failed, trying with 'python setup.py'")
-        code, out, err = execute_cmd("python setup.py install --prefix=%s" % prefix)
-
-    if (code != 0):
-        logging.info(out)
-        raise RuntimeError("Failed to install %s to %s:" % (package, prefix), code, err)
-
-
-#
 # worker classes
 #
+
+
+class CondaEnv(object):
+    """
+    this class encapsulates the logic required to create a conda environment
+    """
+
+    def __init__(self, name, dependencies, local_repos):
+        """
+        Create conda env, install dependencies .and then any local repositories.
+        """
+        self.name = name
+
+        logging.info("============= CREATE ENV =============")
+
+        cmd = "conda create -y -q -n " + name
+
+        # handle python and numpy/scipy dependencies
+        for dep in dependencies:
+            if dep.startswith("python") or dep.startswith("numpy") or dep.startswith("scipy"):
+                cmd = cmd + " " + dep
+
+        # add other required packages
+        conda_pkgs = " ".join([
+            "git",              # for cloning git repos
+            "pip<20.0",         # for installing dependencies
+            "swig",             # for building dependencies
+            "cython",           # for building dependencies
+            "psutil",           # for testflo benchmarking
+            # "memory_profiler",  # for testflo benchmarking
+            "nomkl",            # TODO: experiment with this
+            "matplotlib",       # for plotting results
+            "curl",             # for uploading files & slack messages
+            "sqlite"            # for backing up the database
+        ])
+        cmd = cmd + " " + conda_pkgs
+
+        code, out, err = execute_cmd(cmd)
+        if (code != 0):
+            raise RuntimeError("Failed to create conda environment", name, code, out, err)
+
+        # modify PATH for environment
+        path = env["PATH"].split(os.pathsep)
+        for dirname in path:
+            if "anaconda" in dirname or "miniconda" in dirname:
+                conda_dir = dirname
+                path.remove(conda_dir)
+                break
+        
+        self.env = env.copy()
+        self.env["ORIG_CONDA_DIR"] = conda_dir
+
+        self.env_path = conda_dir.replace("bin", "envs/"+name)
+        self.python = self.env_path + "/bin/python"
+
+        self.env["PATH"] = prepend_path(self.env_path+"/bin", (os.pathsep).join(path))
+        logging.info("env_name: %s, path: %s" % (name, self.env["PATH"]))
+
+        # eval "$(conda shell.bash hook)"
+        # conda activate $name
+
+        # install dependencies
+        for dependency in dependencies:
+            # install the proper version of testflo to do the benchmarking
+            if dependency.startswith("python=3"):
+                self.install("testflo", options="")
+            elif dependency.startswith("python=2"):
+                self.install("testflo<1.4", options="")
+
+            logging.info("Installing dependency: %s" % dependency)
+            if dependency.startswith("~") or dependency.startswith("/"):
+                with cd(os.path.expanduser(dependency)):
+                    if os.path.exists('requirements.txt'):
+                        self.install("requirements.txt", options="-r")
+                    self.install(".", options="")
+            # python, numpy and scipy are installed when the env is created
+            elif (not dependency.startswith("python=") and
+                  not dependency.startswith("numpy") and not dependency.startswith("scipy")):
+                self.install(dependency)
+
+        # install from local repos
+        for local_repo in local_repos:
+            logging.info("Installing from local repo: %s" % local_repo)
+            with repo(local_repo):
+                if os.path.exists('requirements.txt'):
+                    self.install("requirements.txt", options="-r")
+                self.install(".")
+
+    def install(self, package, extras="", options="-q"):
+        """
+        Install a package.
+        """
+        pipinstall = "%s -m pip install %s %s%s " % (self.python, options, package, extras)
+
+        code, out, err = execute_cmd(pipinstall)
+
+        if (code != 0) and package == ".":
+            logging.info("pip install failed, trying with 'python setup.py'")
+            # need to install with --prefix to get things installed into proper conda env
+            code, out, err = execute_cmd("python setup.py install --prefix=%s" % self.env_path)
+
+        if (code != 0):
+            logging.info(out)
+            raise RuntimeError("Failed to install %s to %s:" % (package, prefix), code, err)
+
+    def deactivate(self, keep_env):
+        """
+        Deactivate and optionally remove a conda env at the end of a benchmarking run.
+        """
+        path = env["PATH"].split(os.pathsep)
+        logging.info("PATH AT FIRST: %s" % env["PATH"])
+        for dirname in path:
+            if "anaconda" in dirname:
+                path.remove(dirname)
+                break
+        env["PATH"] = prepend_path(env["ORIG_CONDA_DIR"], (os.pathsep).join(path))
+        logging.info("PATH NOW: %s", env["PATH"])
+
+        if not keep_env:
+            conda_delete = "conda env remove -q -y --name " + name
+            code, out, err = execute_cmd(conda_delete)
+            return code
+
 
 class Slack(object):
     """
@@ -1103,18 +1123,19 @@ class BenchmarkRunner(object):
             if good_commits or 'force' in triggered_by:
 
                 # activate conda env
-                env_path = activate_env(run_name, dependencies, triggers)
+                conda_env = CondaEnv(run_name, dependencies, triggers)
 
                 with repo(project["repository"], project.get("branch", None)):
                     logging.info("========== INSTALL PROJ & RUN ==========")
 
                     # install project, with any specified extras
                     extras = project.get("extras", "")
-                    install("."+extras, options="-e", prefix=env_path)
+                    conda_env.install("."+extras, options="-e")
 
                     # run the unit tests if requested and record current_commits if it fails
                     if unit_tests:
-                        rc = self.run_unittests(run_name, trigger_msg)
+                        with conda(conda_env):
+                            rc = self.run_unittests(run_name, trigger_msg)
                         if rc:
                             write_json(fail_file, current_commits)
                             good_commits = False
@@ -1124,14 +1145,16 @@ class BenchmarkRunner(object):
 
                         # get list of installed dependencies
                         installed_deps = {}
-                        rc, out, err = execute_cmd("pip list")
+                        with conda(conda_env):
+                            rc, out, err = execute_cmd("conda list")
                         for line in out.split('\n'):
                             name_ver = line.split(" ", 1)
                             if len(name_ver) == 2:
                                 installed_deps[name_ver[0]] = name_ver[1]
 
                         csv_file = run_name+".csv"
-                        rc = self.run_benchmarks(run_name, trigger_msg, csv_file)
+                        with conda(conda_env):
+                            rc = self.run_benchmarks(run_name, trigger_msg, csv_file)
                         if rc:
                             write_json(fail_file, current_commits)
                             good_commits = False
@@ -1151,7 +1174,7 @@ class BenchmarkRunner(object):
                         db.backup()
 
                 # clean up environment
-                remove_env(run_name, keep_env)
+                conda_env.deactivate(run_name, keep_env)
 
         # close the log file for this run
         close_log_file()
