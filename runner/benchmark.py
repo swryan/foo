@@ -116,7 +116,7 @@ def init_env(project_info):
             if val.find('$') >= 0:
                 val = os.path.expandvars(val)
             val = val.replace("$PYTHONPATH", "")  # in case it was empty
-            print("setting %s ENV:" % project_info["name"], key, "=", val)
+            logging.info("setting %s ENV: %s=%s", project_info["name"], key,  val)
             env[key] = val
 
 
