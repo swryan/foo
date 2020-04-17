@@ -12,7 +12,11 @@
         "scipy",
         "petsc4py",
         "sqlitedict",
-        "/mdao/w/pyoptsparse"
-    ]
+         "~/dev/ipopt/pyoptsparse"
+    ],
+
+    "env": {
+        "LD_LIBRARY_PATH": "~/dev/ipopt/lib"
+    }
 }
 
