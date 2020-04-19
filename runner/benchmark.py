@@ -361,13 +361,13 @@ class CondaEnv(object):
 
         # handle python and numpy/scipy dependencies
         for dep in dependencies:
-            if dep.startswith("python") or dep.startswith("numpy") or dep.startswith("scipy"):
+            if dep.startswith("python") or dep.startswith("numpy") or dep.startswith("scipy") or dep.startswith("petsc"):
                 cmd = cmd + " " + dep
 
         # add other required packages
         conda_pkgs = " ".join([
             "git",              # for cloning git repos
-            "pip<20.0",         # for installing dependencies
+            "pip",              # for installing dependencies
             "swig",             # for building dependencies
             "cython",           # for building dependencies
             "psutil",           # for testflo benchmarking
@@ -416,7 +416,9 @@ class CondaEnv(object):
                     self.install(".", options="")
             # python, numpy and scipy are installed when the env is created
             elif (not dependency.startswith("python=") and
-                  not dependency.startswith("numpy") and not dependency.startswith("scipy")):
+                  not dependency.startswith("numpy") and
+                  not dependency.startswith("scipy") and
+                  not dependency.startswith("petsc")):
                 self.install(dependency)
 
         # install from local repos
