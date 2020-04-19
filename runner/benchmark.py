@@ -8,12 +8,14 @@ from subprocess import Popen, PIPE
 import sys
 import os
 import os.path
+import stat
 import shlex
 import sqlite3
 import time
 import json
 import csv
 import math
+import tempfile
 
 from datetime import datetime
 
@@ -120,13 +122,13 @@ def init_env(project_info):
             env[key] = val
 
 
-def execute_cmd(cmd):
+def execute_cmd(cmd, shell=False):
     """
     Execute the external command and get its exitcode, stdout and stderr.
     """
     logging.info("> %s", cmd)
     args = shlex.split(cmd)
-    proc = Popen(args, stdout=PIPE, stderr=PIPE, env=env, universal_newlines=True)
+    proc = Popen(args, stdout=PIPE, stderr=PIPE, shell=shell, env=env, universal_newlines=True)
     out, err = proc.communicate()
 
     rc = proc.returncode
@@ -265,7 +267,7 @@ def conda(conda):
     save_env = env
     env = conda.env
 
-    logging.info('> switching to Conda environment %s', conda.name)
+    logging.info('> switching environment (to %s)', conda.name)
     try:
         yield
     finally:
@@ -361,13 +363,13 @@ class CondaEnv(object):
 
         # handle python and numpy/scipy dependencies
         for dep in dependencies:
-            if dep.startswith("python") or dep.startswith("numpy") or dep.startswith("scipy"):
+            if dep.startswith("python") or dep.startswith("numpy") or dep.startswith("scipy") or dep.startswith("petsc"):
                 cmd = cmd + " " + dep
 
         # add other required packages
         conda_pkgs = " ".join([
             "git",              # for cloning git repos
-            "pip<20.0",         # for installing dependencies
+            "pip",              # for installing dependencies
             "swig",             # for building dependencies
             "cython",           # for building dependencies
             "psutil",           # for testflo benchmarking
@@ -400,6 +402,12 @@ class CondaEnv(object):
         self.env["PATH"] = prepend_path(self.env_path+"/bin", (os.pathsep).join(path))
         logging.info("env_name: %s, path: %s" % (name, self.env["PATH"]))
 
+        self.script_header = [
+            "#!/bin/bash",
+            "source ~/anaconda3/etc/profile.d/conda.sh",
+            "conda activate %s" % name,
+        ]
+
         # install dependencies
         for dependency in dependencies:
             # install the proper version of testflo to do the benchmarking
@@ -416,7 +424,9 @@ class CondaEnv(object):
                     self.install(".", options="")
             # python, numpy and scipy are installed when the env is created
             elif (not dependency.startswith("python=") and
-                  not dependency.startswith("numpy") and not dependency.startswith("scipy")):
+                  not dependency.startswith("numpy") 
+                  and not dependency.startswith("scipy")
+                  and not dependency.startswith("petsc")):
                 self.install(dependency)
 
         # install from local repos
@@ -427,20 +437,38 @@ class CondaEnv(object):
                     self.install("requirements.txt", options="-r")
                 self.install(".")
 
+    def execute_cmd(self, cmd, prefix=""):
+        """
+        Execute command within a shell script that activates the environment.
+        """
+        script = '\n'.join(self.script_header + [cmd])
+
+        file_prefix = self.name + "_"
+        if prefix:
+            file_prefix += prefix + "_"
+
+        fd, path = tempfile.mkstemp(prefix=file_prefix, text=True)
+        with open(fd, 'w') as f:
+            f.write(script)
+
+        st = os.stat(path)
+        os.chmod(path, st.st_mode | stat.S_IEXEC)
+
+        code, out, err = execute_cmd(path, shell=True)
+
+        return code, out, err
+
     def install(self, package, extras="", options="-q"):
         """
         Install a package.
         """
-        pipinstall = "%s -m pip install %s %s%s " % (self.python, options, package, extras)
-
-        with conda(self):
-            code, out, err = execute_cmd(pipinstall)
+        cmd = "python -m pip install %s %s%s " % (options, package, extras)
+        code, out, err = self.execute_cmd(cmd, prefix="pip_install_%s" % package)
 
         if (code != 0) and package == ".":
             logging.info("pip install failed, trying with 'python setup.py'")
             # need to install with --prefix to get things installed into proper conda env
-            with conda(self):
-                code, out, err = execute_cmd("python setup.py install --prefix=%s" % self.env_path)
+            code, out, err = self.execute_cmd("python setup.py install")
 
         if (code != 0):
             logging.info(out)
@@ -1122,6 +1150,10 @@ class BenchmarkRunner(object):
                     extras = project.get("extras", "")
                     conda_env.install("."+extras, options="-e")
 
+                    # run any custom scripts (in the conda environment)
+                    for script in project.get("scripts", []):
+                        conda_env.execute_cmd('source %s' % script)
+
                     # run the unit tests if requested and record current_commits if it fails
                     if unit_tests:
                         with conda(conda_env):
@@ -1135,8 +1167,7 @@ class BenchmarkRunner(object):
 
                         # get list of installed dependencies
                         installed_deps = {}
-                        with conda(conda_env):
-                            rc, out, err = execute_cmd("conda list")
+                        rc, out, err = conda_env.execute_cmd("conda list")
                         for line in out.split('\n'):
                             name_ver = line.split(" ", 1)
                             if len(name_ver) == 2:
