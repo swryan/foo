@@ -424,9 +424,9 @@ class CondaEnv(object):
                     self.install(".", options="")
             # python, numpy and scipy are installed when the env is created
             elif (not dependency.startswith("python=") and
-                  not dependency.startswith("numpy") 
-                  and not dependency.startswith("scipy")
-                  and not dependency.startswith("petsc")):
+                  not dependency.startswith("numpy") and
+                  not dependency.startswith("scipy") and
+                  not dependency.startswith("petsc")):
                 self.install(dependency)
 
         # install from local repos
