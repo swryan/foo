@@ -128,6 +128,7 @@ def execute_cmd(cmd, shell=False):
     """
     logging.info("> %s", cmd)
     args = shlex.split(cmd)
+    logging.info(args)
     proc = Popen(args, stdout=PIPE, stderr=PIPE, shell=shell, env=env, universal_newlines=True)
     out, err = proc.communicate()
 
@@ -267,12 +268,13 @@ def conda(conda):
     save_env = env
     env = conda.env
 
-    logging.info('> switching environment (to %s)', conda.name)
+    logging.info('> switching environment (into %s)', conda.name)
     try:
         yield
     finally:
         logging.info('> restoring environment (from %s)', conda.name)
         env = save_env
+
 
 #
 # repository helpers
@@ -345,7 +347,6 @@ def get_current_commit(repository):
 # worker classes
 #
 
-
 class CondaEnv(object):
     """
     this class encapsulates the logic required to create a conda environment
@@ -369,7 +370,7 @@ class CondaEnv(object):
         # add other required packages
         conda_pkgs = " ".join([
             "git",              # for cloning git repos
-            "pip",              # for installing dependencies
+            "pip<20",           # for installing dependencies
             "swig",             # for building dependencies
             "cython",           # for building dependencies
             "psutil",           # for testflo benchmarking
@@ -388,7 +389,7 @@ class CondaEnv(object):
         # modify PATH for environment
         path = env["PATH"].split(os.pathsep)
         for dirname in path:
-            if "anaconda" in dirname or "miniconda" in dirname:
+            if ("anaconda" in dirname or "miniconda" in dirname) and "/bin" in dirname:
                 conda_dir = dirname
                 path.remove(conda_dir)
                 break
@@ -396,7 +397,7 @@ class CondaEnv(object):
         self.env = env.copy()
         self.env["ORIG_CONDA_DIR"] = conda_dir
 
-        self.env_path = conda_dir.replace("bin", "envs/"+name)
+        self.env_path = conda_dir.replace("/bin", "/envs/"+name)
         self.python = self.env_path + "/bin/python"
 
         self.env["PATH"] = prepend_path(self.env_path+"/bin", (os.pathsep).join(path))
@@ -448,8 +449,8 @@ class CondaEnv(object):
             file_prefix += prefix + "_"
 
         fd, path = tempfile.mkstemp(prefix=file_prefix, text=True)
-        with open(fd, 'w') as f:
-            f.write(script)
+        os.write(fd, script)
+        os.close(fd)
 
         st = os.stat(path)
         os.chmod(path, st.st_mode | stat.S_IEXEC)
@@ -462,13 +463,16 @@ class CondaEnv(object):
         """
         Install a package.
         """
-        cmd = "python -m pip install %s %s%s " % (options, package, extras)
-        code, out, err = self.execute_cmd(cmd, prefix="pip_install_%s" % package)
+        cmd = "%s -m pip install %s %s%s " % (self.python, options, package, extras)
+        with conda(self):
+            code, out, err = execute_cmd(cmd)
 
         if (code != 0) and package == ".":
-            logging.info("pip install failed, trying with 'python setup.py'")
             # need to install with --prefix to get things installed into proper conda env
-            code, out, err = self.execute_cmd("python setup.py install")
+            cmd = "%s setup.py install --prefix=%s" % (self.python, self.env_path)
+            logging.info("pip install failed, trying with '%s'" % cmd)
+            with conda(self):
+                code, out, err = execute_cmd(cmd)
 
         if (code != 0):
             logging.info(out)
@@ -1130,7 +1134,7 @@ class BenchmarkRunner(object):
                             # there has been a new commit, set flag to run and delete fail_file
                             logging.info("found new commit for %s", key)
                             logging.info("old commit: %s", failed_commits[key])
-                            logging.info("new commit %s:", current_commits[key])
+                            logging.info("new commit: %s", current_commits[key])
                             good_commits = True
                             os.remove(fail_file)
                             break
@@ -1167,7 +1171,8 @@ class BenchmarkRunner(object):
 
                         # get list of installed dependencies
                         installed_deps = {}
-                        rc, out, err = conda_env.execute_cmd("conda list")
+                        with conda(conda_env):
+                            rc, out, err = execute_cmd("conda list")
                         for line in out.split('\n'):
                             name_ver = line.split(" ", 1)
                             if len(name_ver) == 2:
@@ -1383,7 +1388,7 @@ def main(args=None):
     try:
         conf.update(read_json("benchmark.cfg"))
     except IOError:
-        pass
+        logging.info('NOTE: No local configuration found.')
 
     # initalize logging to stdout
     init_logging()
@@ -1428,7 +1433,16 @@ def main(args=None):
                     os.path.join(conf["working_dir"], (project_name+"_repos")))
 
                 bm = BenchmarkRunner(project_info)
-                bm.run(options.force, options.keep_env, options.unit_tests)
+                try:
+                    bm.run(options.force, options.keep_env, options.unit_tests)
+                except Exception as err:
+                    logging.error("=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=")
+                    logging.error('Benchmarking of %s failed:' % project_name)
+                    logging.error(str(traceback.format_exc()))
+                    logging.error("=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=")
+                finally:
+                    # make sure we end up back where we started in case of an error
+                    os.chdir(os.path.expanduser(conf["working_dir"]))
 
 
 if __name__ == '__main__':
