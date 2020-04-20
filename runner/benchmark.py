@@ -369,7 +369,7 @@ class CondaEnv(object):
         # add other required packages
         conda_pkgs = " ".join([
             "git",              # for cloning git repos
-            "pip<20",           # for installing dependencies
+            "pip",              # for installing dependencies
             "swig",             # for building dependencies
             "cython",           # for building dependencies
             "psutil",           # for testflo benchmarking

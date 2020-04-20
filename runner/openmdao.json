@@ -10,15 +10,8 @@
         "python=3",
         "numpy",
         "scipy",
-        "petsc4py",
+        "petsc4py=3.12",
         "sqlitedict",
-         "~/dev/ipopt/pyoptsparse"
-    ],
-
-    "env": {
-        "LD_LIBRARY_PATH": "~/dev/ipopt/lib",
-        "IPOPT_LIB": "~/dev/ipopt/lib",
-        "IPOPT_INC": "~/dev/ipopt/include/coin-or"
-    }
+        "/mdao/w/pyoptsparse"
+    ]
 }
-
