@@ -6,9 +6,12 @@
         "git@github.com:openmdao/MBI"
     ],
 
-    "dependencies": [
+    "conda": [
         "python=3",
-        "numpy",
+        "numpy"
+    ],
+
+    "dependencies": [
         "parameterized",
         "petsc4py",
         "sqlitedict",

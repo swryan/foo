@@ -8,10 +8,13 @@
         "git@github.com:openmdao/MBI"
     ],
 
-    "dependencies": [
+    "conda": [
         "python=2.7",
         "numpy",
-        "scipy",
+        "scipy"
+    ],
+
+    "dependencies": [
         "nose"
     ]
 }

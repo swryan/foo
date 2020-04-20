@@ -351,9 +351,9 @@ class CondaEnv(object):
     this class encapsulates the logic required to create a conda environment
     """
 
-    def __init__(self, name, dependencies, local_repos):
+    def __init__(self, name, conda_deps, dependencies, local_repos):
         """
-        Create conda env, install dependencies .and then any local repositories.
+        Create conda env, install dependencies and then any local repositories.
         """
         self.name = name
 
@@ -362,9 +362,8 @@ class CondaEnv(object):
         cmd = "conda create -y -q -n " + name
 
         # handle python and numpy/scipy dependencies
-        for dep in dependencies:
-            if dep.startswith("python") or dep.startswith("numpy") or dep.startswith("scipy") or dep.startswith("petsc"):
-                cmd = cmd + " " + dep
+        for dep in conda_deps:
+            cmd = cmd + " " + dep
 
         # add other required packages
         conda_pkgs = " ".join([
@@ -408,14 +407,16 @@ class CondaEnv(object):
             "conda activate %s" % name,
         ]
 
+        # install the proper version of testflo to do the benchmarking
+        for dep in conda_deps:
+            if "python=2" in dep:
+                self.install("testflo<1.4", options="")
+                break
+            elif "python=3" in dep:
+                self.install("testflo", options="")
+
         # install dependencies
         for dependency in dependencies:
-            # install the proper version of testflo to do the benchmarking
-            if dependency.startswith("python=3"):
-                self.install("testflo", options="")
-            elif dependency.startswith("python=2"):
-                self.install("testflo<1.4", options="")
-
             logging.info("Installing dependency: %s" % dependency)
             if dependency.startswith("~") or dependency.startswith("/"):
                 with cd(os.path.expanduser(dependency)):
@@ -1115,6 +1116,7 @@ class BenchmarkRunner(object):
             logging.info("Benchmark triggered by updates to: %s", str(triggered_by))
             trigger_msg = self.get_trigger_message(triggered_by, current_commits)
 
+            conda_deps =  project.get("conda", [])
             dependencies = project.get("dependencies", [])
 
             # if unit testing fails, the current set of commits will be recorded in fail_file
@@ -1144,7 +1146,7 @@ class BenchmarkRunner(object):
             if good_commits or 'force' in triggered_by:
 
                 # activate conda env
-                conda_env = CondaEnv(run_name, dependencies, triggers)
+                conda_env = CondaEnv(run_name, conda_deps, dependencies, triggers)
 
                 with repo(project["repository"], project.get("branch", None)):
                     logging.info("========== INSTALL PROJ & RUN ==========")
