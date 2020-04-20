@@ -388,7 +388,7 @@ class CondaEnv(object):
         # modify PATH for environment
         path = env["PATH"].split(os.pathsep)
         for dirname in path:
-            if ("anaconda" in dirname or "miniconda" in dirname) and "/bin" in dirname:
+            if ("anaconda" in dirname or "miniconda" in dirname) and dirname.endswith("/bin"):
                 conda_dir = dirname
                 path.remove(conda_dir)
                 break
