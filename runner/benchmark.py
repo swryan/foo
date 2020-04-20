@@ -128,7 +128,6 @@ def execute_cmd(cmd, shell=False):
     """
     logging.info("> %s", cmd)
     args = shlex.split(cmd)
-    logging.info(args)
     proc = Popen(args, stdout=PIPE, stderr=PIPE, shell=shell, env=env, universal_newlines=True)
     out, err = proc.communicate()
 
