@@ -351,7 +351,7 @@ class CondaEnv(object):
     this class encapsulates the logic required to create a conda environment
     """
 
-    def __init__(self, name, conda_deps, dependencies, local_repos):
+    def __init__(self, name, conda_spec, dependencies, local_repos):
         """
         Create conda env, install dependencies and then any local repositories.
         """
@@ -362,7 +362,7 @@ class CondaEnv(object):
         cmd = "conda create -y -q -n %s " % name
 
         # add other required packages
-        conda_pkgs = conda_deps + [
+        conda_pkgs = conda_spec + [
             "git",              # for cloning git repos
             "pip",              # for installing dependencies
             "swig",             # for building dependencies
@@ -396,7 +396,7 @@ class CondaEnv(object):
         self.python = self.env_path + "/bin/python"
 
         self.env["PATH"] = prepend_path(self.env_path+"/bin", (os.pathsep).join(path))
-        logging.info("env_name: %s, path: %s" % (name, self.env["PATH"]))
+        logging.info("env_name: %s, PATH: %s" % (name, self.env["PATH"]))
 
         self.script_header = [
             "#!/bin/bash",
@@ -405,12 +405,13 @@ class CondaEnv(object):
         ]
 
         # install the proper version of testflo to do the benchmarking
-        for dep in conda_deps:
-            if "python=2" in dep:
+        for spec in conda_spec:
+            if "python=2" in spec:
                 self.install("testflo<1.4", options="")
                 break
-            elif "python=3" in dep:
+            elif "python=3" in spec:
                 self.install("testflo", options="")
+                break
 
         # install dependencies
         for dependency in dependencies:
@@ -462,9 +463,10 @@ class CondaEnv(object):
             code, out, err = execute_cmd(cmd)
 
         if (code != 0) and package == ".":
+            # local repo couldn't be installed with pip, so try using setup.py
             # need to install with --prefix to get things installed into proper conda env
             cmd = "%s setup.py install --prefix=%s" % (self.python, self.env_path)
-            logging.info("pip install failed, trying with '%s'" % cmd)
+            logging.info("pip install failed, trying with: %s" % cmd)
             with conda(self):
                 code, out, err = execute_cmd(cmd)
 
@@ -1110,7 +1112,7 @@ class BenchmarkRunner(object):
             logging.info("Benchmark triggered by updates to: %s", str(triggered_by))
             trigger_msg = self.get_trigger_message(triggered_by, current_commits)
 
-            conda_deps =  project.get("conda", [])
+            conda_spec =  project.get("conda", [])
             dependencies = project.get("dependencies", [])
 
             # if unit testing fails, the current set of commits will be recorded in fail_file
@@ -1140,7 +1142,7 @@ class BenchmarkRunner(object):
             if good_commits or 'force' in triggered_by:
 
                 # activate conda env
-                conda_env = CondaEnv(run_name, conda_deps, dependencies, triggers)
+                conda_env = CondaEnv(run_name, conda_spec, dependencies, triggers)
 
                 with repo(project["repository"], project.get("branch", None)):
                     logging.info("========== INSTALL PROJ & RUN ==========")
