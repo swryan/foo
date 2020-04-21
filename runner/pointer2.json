@@ -9,10 +9,13 @@
         "git@github.com:SMTorg/smt"
     ],
 
-    "dependencies": [
+    "conda": [
         "python=2",
         "numpy",
-        "scipy",
+        "scipy"
+    ],
+
+    "dependencies": [
         "mpi4py",
         "~/dev/pyoptsparse"
     ]

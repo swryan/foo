@@ -8,12 +8,14 @@ from subprocess import Popen, PIPE
 import sys
 import os
 import os.path
+import stat
 import shlex
 import sqlite3
 import time
 import json
 import csv
 import math
+import tempfile
 
 from datetime import datetime
 
@@ -120,13 +122,13 @@ def init_env(project_info):
             env[key] = val
 
 
-def execute_cmd(cmd):
+def execute_cmd(cmd, shell=False):
     """
     Execute the external command and get its exitcode, stdout and stderr.
     """
     logging.info("> %s", cmd)
     args = shlex.split(cmd)
-    proc = Popen(args, stdout=PIPE, stderr=PIPE, env=env, universal_newlines=True)
+    proc = Popen(args, stdout=PIPE, stderr=PIPE, shell=shell, env=env, universal_newlines=True)
     out, err = proc.communicate()
 
     rc = proc.returncode
@@ -265,12 +267,13 @@ def conda(conda):
     save_env = env
     env = conda.env
 
-    logging.info('> switching to Conda environment %s', conda.name)
+    logging.info('> switching environment (into %s)', conda.name)
     try:
         yield
     finally:
         logging.info('> restoring environment (from %s)', conda.name)
         env = save_env
+
 
 #
 # repository helpers
@@ -343,29 +346,23 @@ def get_current_commit(repository):
 # worker classes
 #
 
-
 class CondaEnv(object):
     """
     this class encapsulates the logic required to create a conda environment
     """
 
-    def __init__(self, name, dependencies, local_repos):
+    def __init__(self, name, conda_deps, dependencies, local_repos):
         """
-        Create conda env, install dependencies .and then any local repositories.
+        Create conda env, install dependencies and then any local repositories.
         """
         self.name = name
 
         logging.info("============= CREATE ENV =============")
 
-        cmd = "conda create -y -q -n " + name
-
-        # handle python and numpy/scipy dependencies
-        for dep in dependencies:
-            if dep.startswith("python") or dep.startswith("numpy") or dep.startswith("scipy") or dep.startswith("petsc"):
-                cmd = cmd + " " + dep
+        cmd = "conda create -y -q -n %s " % name
 
         # add other required packages
-        conda_pkgs = " ".join([
+        conda_pkgs = conda_deps + [
             "git",              # for cloning git repos
             "pip",              # for installing dependencies
             "swig",             # for building dependencies
@@ -376,8 +373,9 @@ class CondaEnv(object):
             "matplotlib",       # for plotting results
             "curl",             # for uploading files & slack messages
             "sqlite"            # for backing up the database
-        ])
-        cmd = cmd + " " + conda_pkgs
+        ]
+
+        cmd = cmd + " ".join(conda_pkgs)
 
         code, out, err = execute_cmd(cmd)
         if (code != 0):
@@ -386,7 +384,7 @@ class CondaEnv(object):
         # modify PATH for environment
         path = env["PATH"].split(os.pathsep)
         for dirname in path:
-            if "anaconda" in dirname or "miniconda" in dirname:
+            if ("anaconda" in dirname or "miniconda" in dirname) and dirname.endswith("/bin"):
                 conda_dir = dirname
                 path.remove(conda_dir)
                 break
@@ -394,20 +392,28 @@ class CondaEnv(object):
         self.env = env.copy()
         self.env["ORIG_CONDA_DIR"] = conda_dir
 
-        self.env_path = conda_dir.replace("bin", "envs/"+name)
+        self.env_path = conda_dir.replace("/bin", "/envs/"+name)
         self.python = self.env_path + "/bin/python"
 
         self.env["PATH"] = prepend_path(self.env_path+"/bin", (os.pathsep).join(path))
         logging.info("env_name: %s, path: %s" % (name, self.env["PATH"]))
 
+        self.script_header = [
+            "#!/bin/bash",
+            "source ~/anaconda3/etc/profile.d/conda.sh",
+            "conda activate %s" % name,
+        ]
+
+        # install the proper version of testflo to do the benchmarking
+        for dep in conda_deps:
+            if "python=2" in dep:
+                self.install("testflo<1.4", options="")
+                break
+            elif "python=3" in dep:
+                self.install("testflo", options="")
+
         # install dependencies
         for dependency in dependencies:
-            # install the proper version of testflo to do the benchmarking
-            if dependency.startswith("python=3"):
-                self.install("testflo", options="")
-            elif dependency.startswith("python=2"):
-                self.install("testflo<1.4", options="")
-
             logging.info("Installing dependency: %s" % dependency)
             if dependency.startswith("~") or dependency.startswith("/"):
                 with cd(os.path.expanduser(dependency)):
@@ -415,10 +421,7 @@ class CondaEnv(object):
                         self.install("requirements.txt", options="-r")
                     self.install(".", options="")
             # python, numpy and scipy are installed when the env is created
-            elif (not dependency.startswith("python=") and
-                  not dependency.startswith("numpy") and
-                  not dependency.startswith("scipy") and
-                  not dependency.startswith("petsc")):
+            else:
                 self.install(dependency)
 
         # install from local repos
@@ -429,20 +432,41 @@ class CondaEnv(object):
                     self.install("requirements.txt", options="-r")
                 self.install(".")
 
+    def execute_cmd(self, cmd, prefix=""):
+        """
+        Execute command within a shell script that activates the environment.
+        """
+        script = '\n'.join(self.script_header + [cmd])
+
+        file_prefix = self.name + "_"
+        if prefix:
+            file_prefix += prefix + "_"
+
+        fd, path = tempfile.mkstemp(prefix=file_prefix, text=True)
+        os.write(fd, script)
+        os.close(fd)
+
+        st = os.stat(path)
+        os.chmod(path, st.st_mode | stat.S_IEXEC)
+
+        code, out, err = execute_cmd(path, shell=True)
+
+        return code, out, err
+
     def install(self, package, extras="", options="-q"):
         """
         Install a package.
         """
-        pipinstall = "%s -m pip install %s %s%s " % (self.python, options, package, extras)
-
+        cmd = "%s -m pip install %s %s%s " % (self.python, options, package, extras)
         with conda(self):
-            code, out, err = execute_cmd(pipinstall)
+            code, out, err = execute_cmd(cmd)
 
         if (code != 0) and package == ".":
-            logging.info("pip install failed, trying with 'python setup.py'")
             # need to install with --prefix to get things installed into proper conda env
+            cmd = "%s setup.py install --prefix=%s" % (self.python, self.env_path)
+            logging.info("pip install failed, trying with '%s'" % cmd)
             with conda(self):
-                code, out, err = execute_cmd("python setup.py install --prefix=%s" % self.env_path)
+                code, out, err = execute_cmd(cmd)
 
         if (code != 0):
             logging.info(out)
@@ -1086,6 +1110,7 @@ class BenchmarkRunner(object):
             logging.info("Benchmark triggered by updates to: %s", str(triggered_by))
             trigger_msg = self.get_trigger_message(triggered_by, current_commits)
 
+            conda_deps =  project.get("conda", [])
             dependencies = project.get("dependencies", [])
 
             # if unit testing fails, the current set of commits will be recorded in fail_file
@@ -1104,7 +1129,7 @@ class BenchmarkRunner(object):
                             # there has been a new commit, set flag to run and delete fail_file
                             logging.info("found new commit for %s", key)
                             logging.info("old commit: %s", failed_commits[key])
-                            logging.info("new commit %s:", current_commits[key])
+                            logging.info("new commit: %s", current_commits[key])
                             good_commits = True
                             os.remove(fail_file)
                             break
@@ -1115,7 +1140,7 @@ class BenchmarkRunner(object):
             if good_commits or 'force' in triggered_by:
 
                 # activate conda env
-                conda_env = CondaEnv(run_name, dependencies, triggers)
+                conda_env = CondaEnv(run_name, conda_deps, dependencies, triggers)
 
                 with repo(project["repository"], project.get("branch", None)):
                     logging.info("========== INSTALL PROJ & RUN ==========")
@@ -1123,6 +1148,10 @@ class BenchmarkRunner(object):
                     # install project, with any specified extras
                     extras = project.get("extras", "")
                     conda_env.install("."+extras, options="-e")
+
+                    # run any custom scripts (in the conda environment)
+                    for script in project.get("scripts", []):
+                        conda_env.execute_cmd('source %s' % script)
 
                     # run the unit tests if requested and record current_commits if it fails
                     if unit_tests:
@@ -1354,7 +1383,7 @@ def main(args=None):
     try:
         conf.update(read_json("benchmark.cfg"))
     except IOError:
-        pass
+        logging.info('NOTE: No local configuration found.')
 
     # initalize logging to stdout
     init_logging()
@@ -1399,7 +1428,16 @@ def main(args=None):
                     os.path.join(conf["working_dir"], (project_name+"_repos")))
 
                 bm = BenchmarkRunner(project_info)
-                bm.run(options.force, options.keep_env, options.unit_tests)
+                try:
+                    bm.run(options.force, options.keep_env, options.unit_tests)
+                except Exception as err:
+                    logging.error("=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=")
+                    logging.error('Benchmarking of %s failed:' % project_name)
+                    logging.error(str(traceback.format_exc()))
+                    logging.error("=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=")
+                finally:
+                    # make sure we end up back where we started in case of an error
+                    os.chdir(os.path.expanduser(conf["working_dir"]))
 
 
 if __name__ == '__main__':

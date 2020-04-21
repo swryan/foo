@@ -5,13 +5,15 @@
         "git@github.com:openmdao/OpenMDAO"
     ],
 
-    "dependencies": [
+    "conda": [
         "python=3",
         "numpy",
         "scipy",
-        "petsc4py",
+        "petsc4py"
+    ],
+
+    "dependencies": [
         "sqlitedict",
         "/mdao/w/pyoptsparse"
     ]
 }
-

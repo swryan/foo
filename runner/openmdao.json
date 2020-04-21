@@ -6,17 +6,15 @@
 
     "extras": "[all]",
 
-    "dependencies": [
+    "conda": [
         "python=3",
         "numpy",
-        "scipy",
-        "petsc4py",
-        "sqlitedict",
-         "~/dev/ipopt/pyoptsparse"
+        "scipy"
     ],
 
-    "env": {
-        "LD_LIBRARY_PATH": "~/dev/ipopt/lib"
-    }
+    "dependencies": [
+        "petsc4py",
+        "sqlitedict",
+        "~/dev/pyoptsparse"
+    ]
 }
-

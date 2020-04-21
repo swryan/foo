@@ -3,10 +3,13 @@
 
     "skip": 1,
 
-    "dependencies": [
+    "conda": [
         "python=2.7",
         "numpy",
-        "scipy",
+        "scipy"
+    ],
+
+    "dependencies": [
         "mpi4py",
         "git+https://bitbucket.org/petsc/petsc4py@3.7.0",
         "~/dev/pyoptsparse"
