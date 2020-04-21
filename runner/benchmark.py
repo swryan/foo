@@ -359,14 +359,10 @@ class CondaEnv(object):
 
         logging.info("============= CREATE ENV =============")
 
-        cmd = "conda create -y -q -n " + name
-
-        # handle python and numpy/scipy dependencies
-        for dep in conda_deps:
-            cmd = cmd + " " + dep
+        cmd = "conda create -y -q -n %s " % name
 
         # add other required packages
-        conda_pkgs = " ".join([
+        conda_pkgs = conda_deps + [
             "git",              # for cloning git repos
             "pip",              # for installing dependencies
             "swig",             # for building dependencies
@@ -377,8 +373,9 @@ class CondaEnv(object):
             "matplotlib",       # for plotting results
             "curl",             # for uploading files & slack messages
             "sqlite"            # for backing up the database
-        ])
-        cmd = cmd + " " + conda_pkgs
+        ]
+
+        cmd = cmd + " ".join(conda_pkgs)
 
         code, out, err = execute_cmd(cmd)
         if (code != 0):
@@ -424,10 +421,7 @@ class CondaEnv(object):
                         self.install("requirements.txt", options="-r")
                     self.install(".", options="")
             # python, numpy and scipy are installed when the env is created
-            elif (not dependency.startswith("python=") and
-                  not dependency.startswith("numpy") and
-                  not dependency.startswith("scipy") and
-                  not dependency.startswith("petsc")):
+            else:
                 self.install(dependency)
 
         # install from local repos

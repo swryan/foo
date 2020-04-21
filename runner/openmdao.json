@@ -11,10 +11,10 @@
         "numpy",
         "scipy"
     ],
-    
+
     "dependencies": [
         "petsc4py",
         "sqlitedict",
-        "/mdao/w/pyoptsparse"
+        "~/dev/pyoptsparse"
     ]
 }
