@@ -9,12 +9,12 @@
     "conda": [
         "python=3",
         "numpy",
-        "scipy",
-        "mpi4py",
-        "petsc4py"
+        "scipy"
     ],
 
     "dependencies": [
+        "mpi4py",
+        "petsc4py",
         "sqlitedict",
         "~/dev/pyoptsparse"
     ]
