@@ -359,6 +359,15 @@ class CondaEnv(object):
 
         logging.info("============= CREATE ENV =============")
 
+        # need conda-forge for petsc, if not using petsc move to bottom of the list
+        if "petsc4py" in conda_spec:
+            cmd = "conda config --add channels conda-forge"
+        else:
+            cmd = "conda config --append channels conda-forge"
+        code, out, err = execute_cmd(cmd)
+        if (code != 0):
+            raise RuntimeError("Failed to configure conda channels", code, out, err)
+
         cmd = "conda create -y -q -n %s " % name
 
         # add other required packages
