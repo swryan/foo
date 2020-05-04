@@ -14,6 +14,6 @@
 
     "dependencies": [
         "sqlitedict",
-        "/mdao/w/pyoptsparse"
+        "~/dev/pyoptsparse"
     ]
 }
