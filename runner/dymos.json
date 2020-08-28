@@ -18,6 +18,8 @@
         "~/dev/ipopt/pyoptsparse"
     ],
 
+    "extras": "[all]",
+
     "env": {
         "LD_LIBRARY_PATH": "~/dev/ipopt/lib",
         "IPOPT_LIB": "~/dev/ipopt/lib",
