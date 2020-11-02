@@ -362,7 +362,7 @@ class RunScript(object):
             "source ~/anaconda3/etc/profile.d/conda.sh"
         ]
 
-        script.append("\n#### Create Conda environment: %s" % run_name)
+        script.append("\n## Create Conda environment: %s" % run_name)
 
         # need conda-forge for petsc, if not using petsc move to bottom of the list
         if "petsc4py" in conda_spec:
@@ -390,9 +390,6 @@ class RunScript(object):
         # activate
         script.append("conda activate %s" % run_name)
 
-        # cd into working directory
-        script.append("cd %s" % conf["repo_dir"])
-
         # install the proper version of testflo to do the benchmarking
         for spec in conda_spec:
             if "python=2" in spec:
@@ -418,6 +415,10 @@ class RunScript(object):
                 script.append("cd -")
             else:
                 script.append("pip install %s" % dependency)
+
+        # cd into repos directory
+        script.append("\n## cd into repos directory")
+        script.append("cd %s" % conf["repo_dir"])
 
         # install triggers
         for trigger in triggers:
@@ -449,20 +450,20 @@ class RunScript(object):
         #     script.append('bash %s' % os.path.expanduser(custom_script))
 
         # print summary of env
-        script.append("\n## Resulting environment:")
+        script.append("\n## List installed packages")
         script.append("conda list")
 
         # run unit tests
         if unit_tests:
-            script.append("\n##### Running unit tests...")
+            script.append("\n##### Run unit tests...")
             script.append("testflo -n 1 --pre_announce --show_skipped -o %s.log" % run_name)
             # if [ $? -eq 0 ]; then
             #     echo "Unit tests failed!!!!!"
             # fi
 
         # run benchmarks
-        script.append("\n## Running benchmarks...")
-        benchmark_cmd = conf.get("benchmark_cmd")
+        script.append("\n## Run benchmarks")
+        benchmark_cmd = "/".join([benchmark_dir, conf.get("benchmark_cmd")])
         csv_file = run_name + ".csv"
         if benchmark_cmd:
             benchmark_cmd = "%s %s %s" % (benchmark_cmd, run_name, csv_file)
@@ -486,8 +487,9 @@ class RunScript(object):
             f.write("\n".join(self.script))
 
         print("bash %s.sh" % self.run_name)
-        sys.exit()
-        # execute_cmd("bash %s.sh" % self.run_name, shell=True)
+
+        execute_cmd("chmod +x %s.sh" % self.run_name)
+        execute_cmd("%s.sh" % self.run_name, shell=True)
 
 
 class Slack(object):
@@ -1165,16 +1167,24 @@ class BenchmarkRunner(object):
                 # check for failed unit test
                 for line in open("%s.log" % run_name):
                     if line.startswith("Failed:"):
+                        print("test results:", line, line.split()[1])
                         if line.split()[1] != "0":
                             write_json(fail_file, current_commits)
+                            self.slack.post_message("%s However, unit tests failed... <!channel>" % trigger_msg)
+                            self.slack.post_file("%s.log" % run_name,
+                                                 "\"%s : regression testing has failed. See attached results file.\"" % self.project["name"])
                             good_commits = False
 
                 # check for failed benchmarks
                 if good_commits:
                     for line in open("%s_bm.log" % run_name):
                         if line.startswith("Failed:"):
+                            print("benchmark results:", line, line.split()[1])
                             if line.split()[1] != "0":
                                 write_json(fail_file, current_commits)
+                                self.slack.post_message("%s However, unit tests failed... <!channel>" % trigger_msg)
+                                self.slack.post_file("%s_bm.log" % run_name,
+                                                     "\"%s : benchmarking has failed. See attached results file.\"" % self.project["name"])
                                 good_commits = False
 
                 if good_commits:
