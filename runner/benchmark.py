@@ -346,31 +346,32 @@ def get_current_commit(repository):
 # worker classes
 #
 
-class CondaEnv(object):
+class RunScript(object):
     """
-    this class encapsulates the logic required to create a conda environment
+    this class encapsulates a script for running benchmarks
     """
-
-    def __init__(self, name, conda_spec, dependencies, local_repos):
+    def __init__(self, run_name, conda_spec, dependencies, triggers,
+                 repo, branch, extras, scripts, unit_tests, keep_env):
         """
         Create conda env, install dependencies and then any local repositories.
         """
-        self.name = name
+        self.run_name = run_name
 
-        logging.info("============= CREATE ENV =============")
+        self.script = script = [
+            "#!/bin/bash",
+            "source ~/anaconda3/etc/profile.d/conda.sh"
+        ]
+
+        script.append("\n#### Create Conda environment: %s" % run_name)
 
         # need conda-forge for petsc, if not using petsc move to bottom of the list
         if "petsc4py" in conda_spec:
-            cmd = "conda config --add channels conda-forge"
+            script.append("conda config --add channels conda-forge")
         else:
-            cmd = "conda config --append channels conda-forge"
-        code, out, err = execute_cmd(cmd)
-        if (code != 0):
-            raise RuntimeError("Failed to configure conda channels", code, out, err)
+            script.append("conda config --append channels conda-forge")
 
-        cmd = "conda create -y -q -n %s " % name
-
-        # add other required packages
+        # create conda env with required packages
+        cmd = "conda create -y -q -n %s " % run_name
         conda_pkgs = conda_spec + [
             "git",              # for cloning git repos
             "pip",              # for installing dependencies
@@ -383,114 +384,110 @@ class CondaEnv(object):
             "curl",             # for uploading files & slack messages
             "sqlite"            # for backing up the database
         ]
-
         cmd = cmd + " ".join(conda_pkgs)
+        script.append(cmd)
 
-        code, out, err = execute_cmd(cmd)
-        if (code != 0):
-            raise RuntimeError("Failed to create conda environment", name, code, out, err)
+        # activate
+        script.append("conda activate %s" % run_name)
 
-        # modify PATH for environment
-        path = env["PATH"].split(os.pathsep)
-        for dirname in path:
-            if ("anaconda" in dirname or "miniconda" in dirname) and dirname.endswith("/bin"):
-                conda_dir = dirname
-                path.remove(conda_dir)
-                break
-        
-        self.env = env.copy()
-        self.env["ORIG_CONDA_DIR"] = conda_dir
-
-        self.env_path = conda_dir.replace("/bin", "/envs/"+name)
-        self.python = self.env_path + "/bin/python"
-
-        self.env["PATH"] = prepend_path(self.env_path+"/bin", (os.pathsep).join(path))
-        logging.info("env_name: %s, PATH: %s" % (name, self.env["PATH"]))
-
-        self.script_header = [
-            "#!/bin/bash",
-            "source ~/anaconda3/etc/profile.d/conda.sh",
-            "conda activate %s" % name,
-        ]
+        # cd into working directory
+        script.append("cd %s" % conf["repo_dir"])
 
         # install the proper version of testflo to do the benchmarking
         for spec in conda_spec:
             if "python=2" in spec:
-                self.install("testflo<1.4", options="")
+                # self.install("testflo<1.4", options="")
+                script.append("pip install testflo<1.4")
                 break
             elif "python=3" in spec:
-                self.install("testflo", options="")
+                # self.install("testflo", options="")
+                script.append("pip install testflo")
                 break
 
         # install dependencies
         for dependency in dependencies:
-            logging.info("Installing dependency: %s" % dependency)
+            script.append("\n## Install dependency: %s" % dependency)
             if dependency.startswith("~") or dependency.startswith("/"):
-                with cd(os.path.expanduser(dependency)):
-                    if os.path.exists('requirements.txt'):
-                        self.install("requirements.txt", options="-r")
-                    self.install(".", options="")
-            # python, numpy and scipy are installed when the env is created
+                script.append("cd %s" % os.path.expanduser(dependency))
+                script.append([
+                    "if test -f requirements.txt; then",
+                    "    pip install -r requirements.txt",
+                    "fi"
+                ])
+                script.append("pip install .")
+                script.append("cd -")
             else:
-                self.install(dependency)
+                script.append("pip install %s" % dependency)
 
-        # install from local repos
-        for local_repo in local_repos:
-            logging.info("Installing from local repo: %s" % local_repo)
-            with repo(local_repo):
-                if os.path.exists('requirements.txt'):
-                    self.install("requirements.txt", options="-r")
-                self.install(".")
+        # install triggers
+        for trigger in triggers:
+            script.append("\n## Install trigger: %s" % trigger)
+            script.append("git clone -b %s" % trigger)
+            script.append("cd %s" % trigger.split('/')[-1])
+            script.append("if test -f requirements.txt; then")
+            script.append("    pip install -r requirements.txt")
+            script.append("fi")
+            script.append("pip install .")
+            script.append("cd -")
 
-    def execute_cmd(self, cmd, prefix=""):
-        """
-        Execute command within a shell script that activates the environment.
-        """
-        script = '\n'.join(self.script_header + [cmd])
+        # install repo
+        script.append("\n## Install repo: %s" % repo)
+        if branch:
+            script.append("git clone -b %s --single-branch %s" % (branch, repo))
+        else:
+            script.append("git clone %s" % repo)
 
-        file_prefix = self.name + "_"
-        if prefix:
-            file_prefix += prefix + "_"
+        script.append("cd %s" % repo.split('/')[-1])
+        script.append("if test -f requirements.txt; then")
+        script.append("    pip install -r requirements.txt")
+        script.append("fi")
+        script.append("pip install -e .%s" % extras)
 
-        fd, path = tempfile.mkstemp(prefix=file_prefix, text=True)
-        os.write(fd, script)
-        os.close(fd)
+        # # run any custom scripts (in the conda environment)
+        # for custom_script in scripts:
+        #     script.append("\n##### Running custom script: %s" % custom_script)
+        #     script.append('bash %s' % os.path.expanduser(custom_script))
 
-        st = os.stat(path)
-        os.chmod(path, st.st_mode | stat.S_IEXEC)
+        # print summary of env
+        script.append("\n## Resulting environment:")
+        script.append("conda list")
 
-        code, out, err = execute_cmd(path, shell=True)
+        # run unit tests
+        if unit_tests:
+            script.append("\n##### Running unit tests...")
+            script.append("testflo -n 1 --pre_announce --show_skipped -o %s.log" % run_name)
+            # if [ $? -eq 0 ]; then
+            #     echo "Unit tests failed!!!!!"
+            # fi
 
-        return code, out, err
+        # run benchmarks
+        script.append("\n## Running benchmarks...")
+        benchmark_cmd = conf.get("benchmark_cmd")
+        csv_file = run_name + ".csv"
+        if benchmark_cmd:
+            benchmark_cmd = "%s %s %s" % (benchmark_cmd, run_name, csv_file)
+        else:
+            benchmark_cmd = "testflo -n 1 -bv -o %s_bm.log -d %s" % (run_name, csv_file)
+        script.append(benchmark_cmd)
 
-    def install(self, package, extras="", options="-q"):
-        """
-        Install a package.
-        """
-        cmd = "%s -m pip install %s %s%s " % (self.python, options, package, extras)
-        with conda(self):
-            code, out, err = execute_cmd(cmd)
-
-        if (code != 0) and package == ".":
-            # local repo couldn't be installed with pip, so try using setup.py
-            # need to install with --prefix to get things installed into proper conda env
-            cmd = "%s setup.py install --prefix=%s" % (self.python, self.env_path)
-            logging.info("pip install failed, trying with: %s" % cmd)
-            with conda(self):
-                code, out, err = execute_cmd(cmd)
-
-        if (code != 0):
-            logging.info(out)
-            raise RuntimeError("Failed to install %s:" % package, code, err)
-
-    def deactivate(self, keep_env):
-        """
-        Deactivate and optionally remove a conda env at the end of a benchmarking run.
-        """
+        # done
+        script.append("\n## Clean up")
+        script.append("conda deactivate")
+        script.append("cd -")
         if not keep_env:
-            conda_delete = "conda env remove -q -y --name " + self.name
-            code, out, err = execute_cmd(conda_delete)
-            return code
+            script.append("conda env remove -q -y --name %s" % run_name)
+
+        from pprint import pprint
+        pprint(script)
+        print("\n".join(script))
+
+    def execute(self):
+        with open("%s.sh" % self.run_name, "a") as f:
+            f.write("\n".join(self.script))
+
+        print("bash %s.sh" % self.run_name)
+        sys.exit()
+        # execute_cmd("bash %s.sh" % self.run_name, shell=True)
 
 
 class Slack(object):
@@ -1091,24 +1088,24 @@ class BenchmarkRunner(object):
 
         triggers = project.get("triggers", [])
 
-        for trigger in triggers + [project["repository"]]:
-            trigger = os.path.expanduser(trigger)
-            # for the project repository, we may want a particular branch
-            if trigger is project["repository"]:
-                branch = project.get("branch", None)
-            else:
-                branch = None
-            # check each trigger for any update since last run
-            with repo(trigger, branch):
-                msg = 'checking trigger ' + trigger + ' ' + branch if branch else ''
-                logging.info(msg)
-                current_commits[trigger] = get_current_commit(trigger)
-                logging.info("Curr CommitID: %s", current_commits[trigger])
-                last_commit = str(db.get_last_commit(trigger))
-                logging.info("Last CommitID: %s", last_commit)
-                if (last_commit != current_commits[trigger]):
-                    logging.info("There has been an update to %s\n", trigger)
-                    triggered_by.append(trigger)
+        # for trigger in triggers + [project["repository"]]:
+        #     trigger = os.path.expanduser(trigger)
+        #     # for the project repository, we may want a particular branch
+        #     if trigger is project["repository"]:
+        #         branch = project.get("branch", None)
+        #     else:
+        #         branch = None
+        #     # check each trigger for any update since last run
+        #     with repo(trigger, branch):
+        #         msg = 'checking trigger ' + trigger + ' ' + branch if branch else ''
+        #         logging.info(msg)
+        #         current_commits[trigger] = get_current_commit(trigger)
+        #         logging.info("Curr CommitID: %s", current_commits[trigger])
+        #         last_commit = str(db.get_last_commit(trigger))
+        #         logging.info("Last CommitID: %s", last_commit)
+        #         if (last_commit != current_commits[trigger]):
+        #             logging.info("There has been an update to %s\n", trigger)
+        #             triggered_by.append(trigger)
 
         # if new benchmark run is needed:
         # - create and activate a clean env
@@ -1150,51 +1147,42 @@ class BenchmarkRunner(object):
 
             if good_commits or 'force' in triggered_by:
 
-                # activate conda env
-                conda_env = CondaEnv(run_name, conda_spec, dependencies, triggers)
+                # make sure our working repo dir exists
+                repo_dir = conf["repo_dir"]
+                if not os.path.exists(repo_dir):
+                    os.makedirs(repo_dir)
 
-                with repo(project["repository"], project.get("branch", None)):
-                    logging.info("========== INSTALL PROJ & RUN ==========")
+                # create script
+                repo = project["repository"]
+                branch = project.get("branch", None)
+                extras = project.get("extras", "")
+                scripts = project.get("scripts", [])
 
-                    # install project, with any specified extras
-                    extras = project.get("extras", "")
-                    conda_env.install("."+extras, options="-e")
+                script = RunScript(run_name, conda_spec, dependencies, triggers,
+                                   repo, branch, extras, scripts, unit_tests, keep_env)
+                script.execute()
 
-                    # run any custom scripts (in the conda environment)
-                    for script in project.get("scripts", []):
-                        conda_env.execute_cmd('source %s' % script)
-
-                    # run the unit tests if requested and record current_commits if it fails
-                    if unit_tests:
-                        with conda(conda_env):
-                            rc = self.run_unittests(run_name, trigger_msg)
-                        if rc:
+                # check for failed unit test
+                for line in open("%s.log" % run_name):
+                    if line.startswith("Failed:"):
+                        if line.split()[1] != "0":
                             write_json(fail_file, current_commits)
                             good_commits = False
 
-                    # if we still show good commits, run benchmarks and add data to database
-                    if good_commits:
+                # check for failed benchmarks
+                if good_commits:
+                    for line in open("%s_bm.log" % run_name):
+                        if line.startswith("Failed:"):
+                            if line.split()[1] != "0":
+                                write_json(fail_file, current_commits)
+                                good_commits = False
 
-                        # get list of installed dependencies
-                        installed_deps = {}
-                        with conda(conda_env):
-                            rc, out, err = execute_cmd("conda list")
-                        for line in out.split('\n'):
-                            name_ver = line.split(" ", 1)
-                            if len(name_ver) == 2:
-                                installed_deps[name_ver[0]] = name_ver[1]
-
-                        csv_file = run_name+".csv"
-                        with conda(conda_env):
-                            rc = self.run_benchmarks(run_name, trigger_msg, csv_file)
-                        if rc:
-                            write_json(fail_file, current_commits)
-                            good_commits = False
-                        else:
-                            db.add_benchmark_data(current_commits, csv_file, installed_deps)
-                            self.post_results(trigger_msg)
-                            if conf["remove_csv"]:
-                                os.remove(csv_file)
+                if good_commits:
+                    csv_file = run_name+".csv"
+                    db.add_benchmark_data(current_commits, csv_file, installed_deps)
+                    self.post_results(trigger_msg)
+                    if conf["remove_csv"]:
+                        os.remove(csv_file)
 
                 if good_commits:
                     # if benchmarks didn't fail but there are no commits in database, then
@@ -1204,9 +1192,6 @@ class BenchmarkRunner(object):
                     else:
                         # back up and transfer database
                         db.backup()
-
-                # clean up environment
-                conda_env.deactivate(keep_env)
 
         # close the log file for this run
         close_log_file()
@@ -1269,7 +1254,7 @@ class BenchmarkRunner(object):
         """
         Use testflo to run unit tests
         """
-        testflo_cmd = "testflo -n 1 --pre_announce"
+        testflo_cmd = "testflo -n 1 --pre_announce --show_skipped "
 
         # run testflo command
         code, out, err = execute_cmd(testflo_cmd)
