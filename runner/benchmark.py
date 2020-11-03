@@ -16,6 +16,7 @@ import json
 import csv
 import math
 import tempfile
+import pathlib
 
 from datetime import datetime
 
@@ -130,6 +131,11 @@ def execute_cmd(cmd, shell=False):
     args = shlex.split(cmd)
     proc = Popen(args, stdout=PIPE, stderr=PIPE, shell=shell, env=env, universal_newlines=True)
     out, err = proc.communicate()
+
+    print('STDOUT:')
+    print(out)
+    print('STDERR:')
+    print(err)
 
     rc = proc.returncode
     if rc:
@@ -351,7 +357,7 @@ class RunScript(object):
     this class encapsulates a script for running benchmarks
     """
     def __init__(self, run_name, conda_spec, dependencies, triggers,
-                 repo, branch, extras, scripts, unit_tests, keep_env):
+                 repo, branch, extras, preinstall, postinstall, unit_tests, keep_env):
         """
         Create conda env, install dependencies and then any local repositories.
         """
@@ -359,7 +365,7 @@ class RunScript(object):
 
         self.script = script = [
             "#!/bin/bash",
-            "source ~/anaconda3/etc/profile.d/conda.sh"
+            "source ~/anaconda3/etc/profile.d/conda.sh",
         ]
 
         script.append("\n## Create Conda environment: %s" % run_name)
@@ -400,6 +406,11 @@ class RunScript(object):
                 # self.install("testflo", options="")
                 script.append("pip install testflo")
                 break
+
+        # run any pre-install commands (in the conda environment)
+        for cmd in preinstall:
+            script.append("\n##### Running pre-install command: %s" % cmd)
+            script.append(os.path.expanduser(cmd))
 
         # install dependencies
         for dependency in dependencies:
@@ -444,10 +455,10 @@ class RunScript(object):
         script.append("fi")
         script.append("pip install -e .%s" % extras)
 
-        # # run any custom scripts (in the conda environment)
-        # for custom_script in scripts:
-        #     script.append("\n##### Running custom script: %s" % custom_script)
-        #     script.append('bash %s' % os.path.expanduser(custom_script))
+        # run any post-install  commands (in the conda environment)
+        for cmd in postinstall:
+            script.append("\n##### Running post-install command: %s" % cmd)
+            script.append(os.path.expanduser(cmd))
 
         # print summary of env
         script.append("\n## List installed packages")
@@ -455,7 +466,7 @@ class RunScript(object):
 
         # run unit tests
         if unit_tests:
-            script.append("\n##### Run unit tests...")
+            script.append("\n##### Run unit tests")
             script.append("testflo -n 1 --pre_announce --show_skipped -o %s.log" % run_name)
             # if [ $? -eq 0 ]; then
             #     echo "Unit tests failed!!!!!"
@@ -469,7 +480,9 @@ class RunScript(object):
             benchmark_cmd = "%s %s %s" % (benchmark_cmd, run_name, csv_file)
         else:
             benchmark_cmd = "testflo -n 1 -bv -o %s_bm.log -d %s" % (run_name, csv_file)
+        script.append("if [ $? -eq 0 ]; then")
         script.append(benchmark_cmd)
+        script.append("fi")
 
         # done
         script.append("\n## Clean up")
@@ -1158,32 +1171,38 @@ class BenchmarkRunner(object):
                 repo = project["repository"]
                 branch = project.get("branch", None)
                 extras = project.get("extras", "")
-                scripts = project.get("scripts", [])
+                preinstall = project.get("preinstall", [])
+                postinstall = project.get("postinstall", [])
 
                 script = RunScript(run_name, conda_spec, dependencies, triggers,
-                                   repo, branch, extras, scripts, unit_tests, keep_env)
+                                   repo, branch, extras, preinstall, postinstall, 
+                                   unit_tests, keep_env)
                 script.execute()
 
                 # check for failed unit test
-                for line in open("%s.log" % run_name):
+                log_file = list(pathlib.Path(".").glob("**/%s.log" % run_name))[0]
+                logging.info("unit test results:", log_file)
+                for line in open(log_file):
                     if line.startswith("Failed:"):
                         print("test results:", line, line.split()[1])
                         if line.split()[1] != "0":
                             write_json(fail_file, current_commits)
                             self.slack.post_message("%s However, unit tests failed... <!channel>" % trigger_msg)
-                            self.slack.post_file("%s.log" % run_name,
+                            self.slack.post_file(log_file,
                                                  "\"%s : regression testing has failed. See attached results file.\"" % self.project["name"])
                             good_commits = False
 
                 # check for failed benchmarks
                 if good_commits:
-                    for line in open("%s_bm.log" % run_name):
+                    log_file = list(pathlib.Path(".").glob("**/%s_bm.log" % run_name))[0]
+                    logging.info("benchmark results:", log_file)
+                    for line in open(log_file):
                         if line.startswith("Failed:"):
                             print("benchmark results:", line, line.split()[1])
                             if line.split()[1] != "0":
                                 write_json(fail_file, current_commits)
                                 self.slack.post_message("%s However, unit tests failed... <!channel>" % trigger_msg)
-                                self.slack.post_file("%s_bm.log" % run_name,
+                                self.slack.post_file(log_file,
                                                      "\"%s : benchmarking has failed. See attached results file.\"" % self.project["name"])
                                 good_commits = False
 
