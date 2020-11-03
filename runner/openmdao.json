@@ -19,7 +19,6 @@
     ],
 
     "preinstall": [
-        "module load openmpi/4.0.x-master/gnu/4.8.5",
         "~/dev/build_pyoptsparse/build_pyoptsparse.sh -a -s ~/dev/snopt7/src"
     ]
 }

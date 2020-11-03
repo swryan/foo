@@ -132,11 +132,6 @@ def execute_cmd(cmd, shell=False):
     proc = Popen(args, stdout=PIPE, stderr=PIPE, shell=shell, env=env, universal_newlines=True)
     out, err = proc.communicate()
 
-    print('STDOUT:')
-    print(out)
-    print('STDERR:')
-    print(err)
-
     rc = proc.returncode
     if rc:
         logging.info("RC: %d", rc)
@@ -356,10 +351,9 @@ class RunScript(object):
     """
     this class encapsulates a script for running benchmarks
     """
-    def __init__(self, run_name, conda_spec, dependencies, triggers,
-                 repo, branch, extras, preinstall, postinstall, unit_tests, keep_env):
+    def __init__(self, run_name, project, unit_tests, keep_env):
         """
-        Create conda env, install dependencies and then any local repositories.
+        Create conda env, install dependencies and then local repositories.
         """
         self.run_name = run_name
 
@@ -369,6 +363,8 @@ class RunScript(object):
         ]
 
         script.append("\n## Create Conda environment: %s" % run_name)
+
+        conda_spec = project["conda"]
 
         # need conda-forge for petsc, if not using petsc move to bottom of the list
         if "petsc4py" in conda_spec:
@@ -407,14 +403,9 @@ class RunScript(object):
                 script.append("pip install testflo")
                 break
 
-        # run any pre-install commands (in the conda environment)
-        for cmd in preinstall:
-            script.append("\n##### Running pre-install command: %s" % cmd)
-            script.append(os.path.expanduser(cmd))
-
         # install dependencies
-        for dependency in dependencies:
-            script.append("\n## Install dependency: %s" % dependency)
+        script.append("\n## Install dependencies: %s" % dependencies)
+        for dependency in project["dependencies"]:
             if dependency.startswith("~") or dependency.startswith("/"):
                 script.append("cd %s" % os.path.expanduser(dependency))
                 script.append([
@@ -432,9 +423,8 @@ class RunScript(object):
         script.append("cd %s" % conf["repo_dir"])
 
         # install triggers
-        for trigger in triggers:
+        for trigger in project["triggers"]:
             script.append("\n## Install trigger: %s" % trigger)
-            script.append("git clone -b %s" % trigger)
             script.append("cd %s" % trigger.split('/')[-1])
             script.append("if test -f requirements.txt; then")
             script.append("    pip install -r requirements.txt")
@@ -442,23 +432,26 @@ class RunScript(object):
             script.append("pip install .")
             script.append("cd -")
 
-        # install repo
-        script.append("\n## Install repo: %s" % repo)
-        if branch:
-            script.append("git clone -b %s --single-branch %s" % (branch, repo))
-        else:
-            script.append("git clone %s" % repo)
+        # run any pre-install commands (in the conda environment & repo dir)
+        if "preinstall" in project:
+            for cmd in project["preinstall"]:
+                script.append("\n## Run pre-install command: %s" % cmd)
+                script.append(os.path.expanduser(cmd))
 
-        script.append("cd %s" % repo.split('/')[-1])
+        # install repository
+        repository = project["repository"]
+        script.append("\n## Install repo: %s" % repository)
+        script.append("cd %s" % repository.split('/')[-1])
         script.append("if test -f requirements.txt; then")
         script.append("    pip install -r requirements.txt")
         script.append("fi")
-        script.append("pip install -e .%s" % extras)
+        script.append("pip install -e .%s" % project.get("extras", ""))
 
-        # run any post-install  commands (in the conda environment)
-        for cmd in postinstall:
-            script.append("\n##### Running post-install command: %s" % cmd)
-            script.append(os.path.expanduser(cmd))
+        # run any post-install commands (in the conda environment & repo dir)
+        if "postinstall" in project:
+            for cmd in project["postinstall"]:
+                script.append("\n## Run post-install command: %s" % cmd)
+                script.append(os.path.expanduser(cmd))
 
         # print summary of env
         script.append("\n## List installed packages")
@@ -468,9 +461,6 @@ class RunScript(object):
         if unit_tests:
             script.append("\n##### Run unit tests")
             script.append("testflo -n 1 --pre_announce --show_skipped -o %s.log" % run_name)
-            # if [ $? -eq 0 ]; then
-            #     echo "Unit tests failed!!!!!"
-            # fi
 
         # run benchmarks
         script.append("\n## Run benchmarks")
@@ -479,7 +469,7 @@ class RunScript(object):
         if benchmark_cmd:
             benchmark_cmd = "%s %s %s" % (benchmark_cmd, run_name, csv_file)
         else:
-            benchmark_cmd = "testflo -n 1 -bv -o %s_bm.log -d %s" % (run_name, csv_file)
+            benchmark_cmd = "testflo -n 1 -bv -d %s" % (run_name, csv_file)
         script.append("if [ $? -eq 0 ]; then")
         script.append(benchmark_cmd)
         script.append("fi")
@@ -487,13 +477,13 @@ class RunScript(object):
         # done
         script.append("\n## Clean up")
         script.append("conda deactivate")
-        script.append("cd -")
         if not keep_env:
             script.append("conda env remove -q -y --name %s" % run_name)
 
-        from pprint import pprint
-        pprint(script)
-        print("\n".join(script))
+        logging.info("Run Script:")
+        logging.info("---------------------------------------------------------")
+        logging.info("\n".join(script))
+        logging.info("---------------------------------------------------------")
 
     def execute(self):
         with open("%s.sh" % self.run_name, "a") as f:
@@ -1103,24 +1093,24 @@ class BenchmarkRunner(object):
 
         triggers = project.get("triggers", [])
 
-        # for trigger in triggers + [project["repository"]]:
-        #     trigger = os.path.expanduser(trigger)
-        #     # for the project repository, we may want a particular branch
-        #     if trigger is project["repository"]:
-        #         branch = project.get("branch", None)
-        #     else:
-        #         branch = None
-        #     # check each trigger for any update since last run
-        #     with repo(trigger, branch):
-        #         msg = 'checking trigger ' + trigger + ' ' + branch if branch else ''
-        #         logging.info(msg)
-        #         current_commits[trigger] = get_current_commit(trigger)
-        #         logging.info("Curr CommitID: %s", current_commits[trigger])
-        #         last_commit = str(db.get_last_commit(trigger))
-        #         logging.info("Last CommitID: %s", last_commit)
-        #         if (last_commit != current_commits[trigger]):
-        #             logging.info("There has been an update to %s\n", trigger)
-        #             triggered_by.append(trigger)
+        for trigger in triggers + [project["repository"]]:
+            trigger = os.path.expanduser(trigger)
+            # for the project repository, we may want a particular branch
+            if trigger is project["repository"]:
+                branch = project.get("branch", None)
+            else:
+                branch = None
+            # check each trigger for any update since last run
+            with repo(trigger, branch):
+                msg = 'checking trigger ' + trigger + ' ' + branch if branch else ''
+                logging.info(msg)
+                current_commits[trigger] = get_current_commit(trigger)
+                logging.info("Curr CommitID: %s", current_commits[trigger])
+                last_commit = str(db.get_last_commit(trigger))
+                logging.info("Last CommitID: %s", last_commit)
+                if (last_commit != current_commits[trigger]):
+                    logging.info("There has been an update to %s\n", trigger)
+                    triggered_by.append(trigger)
 
         # if new benchmark run is needed:
         # - create and activate a clean env
@@ -1167,42 +1157,34 @@ class BenchmarkRunner(object):
                 if not os.path.exists(repo_dir):
                     os.makedirs(repo_dir)
 
-                # create script
-                repo = project["repository"]
-                branch = project.get("branch", None)
-                extras = project.get("extras", "")
-                preinstall = project.get("preinstall", [])
-                postinstall = project.get("postinstall", [])
-
-                script = RunScript(run_name, conda_spec, dependencies, triggers,
-                                   repo, branch, extras, preinstall, postinstall, 
-                                   unit_tests, keep_env)
+                # create script & run (leaves us in the repo directory)
+                script = RunScript(run_name, project, unit_tests, keep_env)
                 script.execute()
 
                 # check for failed unit test
-                log_file = list(pathlib.Path(".").glob("**/%s.log" % run_name))[0]
-                logging.info("unit test results:", log_file)
-                for line in open(log_file):
+                test_log = "%s.log" % run_name
+                logging.info("unit test results:", test_log)
+                for line in open(test_log):
                     if line.startswith("Failed:"):
                         print("test results:", line, line.split()[1])
                         if line.split()[1] != "0":
                             write_json(fail_file, current_commits)
                             self.slack.post_message("%s However, unit tests failed... <!channel>" % trigger_msg)
-                            self.slack.post_file(log_file,
+                            self.slack.post_file(test_log,
                                                  "\"%s : regression testing has failed. See attached results file.\"" % self.project["name"])
                             good_commits = False
 
                 # check for failed benchmarks
                 if good_commits:
-                    log_file = list(pathlib.Path(".").glob("**/%s_bm.log" % run_name))[0]
-                    logging.info("benchmark results:", log_file)
-                    for line in open(log_file):
+                    benchmark_log = "tesflo_report.out"
+                    logging.info("benchmark results:", benchmark_log)
+                    for line in open(benchmark_log):
                         if line.startswith("Failed:"):
                             print("benchmark results:", line, line.split()[1])
                             if line.split()[1] != "0":
                                 write_json(fail_file, current_commits)
                                 self.slack.post_message("%s However, unit tests failed... <!channel>" % trigger_msg)
-                                self.slack.post_file(log_file,
+                                self.slack.post_file(benchmark_log,
                                                      "\"%s : benchmarking has failed. See attached results file.\"" % self.project["name"])
                                 good_commits = False
 
