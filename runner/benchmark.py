@@ -266,7 +266,7 @@ def repo(repository, branch=None):
 
 
 @contextmanager
-def conda(conda):
+def conda(name):
     """
     Change PATH to run in conda environment.
     """
