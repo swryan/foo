@@ -268,11 +268,23 @@ def repo(repository, branch=None):
 @contextmanager
 def conda(conda):
     """
-    activate conda environment (switching out global env).
+    Change PATH to run in conda environment.
     """
     global env
     save_env = env
-    env = conda.env
+    env = env.copy()
+
+    # modify PATH for environment
+    path = env["PATH"].split(os.pathsep)
+    for dirname in path:
+        if ("anaconda" in dirname or "miniconda" in dirname) and dirname.endswith("/bin"):
+            conda_dir = dirname
+            path.remove(conda_dir)
+            break
+
+    env_path = conda_dir.replace("/bin", "/envs/"+name)
+    env["PATH"] = prepend_path(self.env_path+"/bin", (os.pathsep).join(path))
+
 
     logging.info('> switching environment (into %s)', conda.name)
     try:
