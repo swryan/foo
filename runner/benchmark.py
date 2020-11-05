@@ -1182,7 +1182,7 @@ class BenchmarkRunner(object):
 
                 # check for failed benchmarks
                 if good_commits:
-                    benchmark_log = os.path.join(repo_dir, repo_name, "testflo_report.out") 
+                    benchmark_log = os.path.join(repo_dir, repo_name, "testflo_report.out")
                     logging.info("benchmark results:", benchmark_log)
                     for line in open(benchmark_log):
                         if line.startswith("Failed:"):
@@ -1195,6 +1195,16 @@ class BenchmarkRunner(object):
                                 good_commits = False
 
                 if good_commits:
+                    # get list of installed dependencies
+                    installed_deps = {}
+                    with conda(run_name):
+                        rc, out, err = execute_cmd("conda list")
+                    for line in out.split('\n'):
+                        name_ver = line.split(" ", 1)
+                        if len(name_ver) == 2:
+                            installed_deps[name_ver[0]] = name_ver[1]
+
+                    # update database with benchmark resuls
                     csv_file = run_name+".csv"
                     db.add_benchmark_data(current_commits, csv_file, installed_deps)
                     self.post_results(trigger_msg)
