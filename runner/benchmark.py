@@ -286,11 +286,11 @@ def conda(name):
     env["PATH"] = prepend_path(env_path+"/bin", (os.pathsep).join(path))
 
 
-    logging.info('> switching environment (into %s)', conda.name)
+    logging.info('> switching environment (into %s)', name)
     try:
         yield
     finally:
-        logging.info('> restoring environment (from %s)', conda.name)
+        logging.info('> restoring environment (from %s)', name)
         env = save_env
 
 
@@ -1180,20 +1180,21 @@ class BenchmarkRunner(object):
                 repo_name = project["repository"].split('/')[-1]
 
                 # check for failed unit test
-                test_log = os.path.join(repo_dir, repo_name, "%s.log" % run_name)
-                logging.info("unit test results:", test_log)
-                for line in open(test_log):
-                    if line.startswith("Failed:"):
-                        print("test results:", line, line.split()[1])
-                        if line.split()[1] != "0":
-                            write_json(fail_file, current_commits)
-                            self.slack.post_message("%s However, unit tests failed... <!channel>" % trigger_msg)
-                            self.slack.post_file(test_log,
-                                                 "\"%s : regression testing has failed. See attached results file.\"" % self.project["name"])
-                            good_commits = False
+                if unit_tests:
+                    test_log = os.path.join(repo_dir, repo_name, "%s.log" % run_name)
+                    logging.info("unit test results:", test_log)
+                    for line in open(test_log):
+                        if line.startswith("Failed:"):
+                            print("test results:", line, line.split()[1])
+                            if line.split()[1] != "0":
+                                write_json(fail_file, current_commits)
+                                self.slack.post_message("%s However, unit tests failed... <!channel>" % trigger_msg)
+                                self.slack.post_file(test_log,
+                                                     "\"%s : regression testing has failed. See attached results file.\"" % self.project["name"])
+                                good_commits = False
 
                 # check for failed benchmarks
-                if good_commits:
+                if not unit_tests or good_commits:
                     benchmark_log = os.path.join(repo_dir, repo_name, "testflo_report.out")
                     logging.info("benchmark results:", benchmark_log)
                     for line in open(benchmark_log):
@@ -1217,7 +1218,7 @@ class BenchmarkRunner(object):
                             installed_deps[name_ver[0]] = name_ver[1]
 
                     # update database with benchmark resuls
-                    csv_file = run_name+".csv"
+                    csv_file = os.path.join(repo_dir, repo_name, "%s.csv" % run_name)
                     db.add_benchmark_data(current_commits, csv_file, installed_deps)
                     self.post_results(trigger_msg)
                     if conf["remove_csv"]:
