@@ -45,6 +45,12 @@ conf = {
     "repo_dir":    "repos",
     "logs_dir":    "logs",
 
+    # script needs at least bash and conda
+    "script_prefix": [
+        "#!/bin/bash",
+        "source ~/anaconda3/etc/profile.d/conda.sh"
+    ],
+
     # remove benchmark data file after adding to database
     "remove_csv":  False,
 
@@ -357,12 +363,14 @@ class RunScript(object):
         """
         self.run_name = run_name
 
-        self.script = script = [
-            "#!/bin/bash",
-            "source ~/anaconda3/etc/profile.d/conda.sh",
-        ]
+        self.script = script = []
 
-        script.append("\n## Create Conda environment: %s" % run_name)
+        for line in conf.get("script_prefix"):
+            script.append(line)
+
+        script.append("\nRUN_NAME=%s" % run_name)
+
+        script.append("\n## Create Conda environment")
 
         conda_spec = project["conda"]
 
@@ -373,7 +381,7 @@ class RunScript(object):
             script.append("conda config --append channels conda-forge")
 
         # create conda env with required packages
-        cmd = "conda create -y -q -n %s " % run_name
+        cmd = "conda create -y -q -n $RUN_NAME "
         conda_pkgs = conda_spec + [
             "git",              # for cloning git repos
             "pip",              # for installing dependencies
@@ -390,7 +398,7 @@ class RunScript(object):
         script.append(cmd)
 
         # activate
-        script.append("conda activate %s" % run_name)
+        script.append("conda activate $RUN_NAME")
 
         # install the proper version of testflo to do the benchmarking
         for spec in conda_spec:
@@ -404,7 +412,7 @@ class RunScript(object):
                 break
 
         # install dependencies
-        script.append("\n## Install dependencies: %s" % dependencies)
+        script.append("\n## Install dependencies")
         for dependency in project["dependencies"]:
             if dependency.startswith("~") or dependency.startswith("/"):
                 script.append("cd %s" % os.path.expanduser(dependency))
@@ -418,10 +426,6 @@ class RunScript(object):
             else:
                 script.append("pip install %s" % dependency)
 
-        # cd into repos directory
-        script.append("\n## cd into repos directory")
-        script.append("cd %s" % conf["repo_dir"])
-
         # install triggers
         for trigger in project["triggers"]:
             script.append("\n## Install trigger: %s" % trigger)
@@ -434,8 +438,8 @@ class RunScript(object):
 
         # run any pre-install commands (in the conda environment & repo dir)
         if "preinstall" in project:
+            script.append("\n## Run pre-install commands")
             for cmd in project["preinstall"]:
-                script.append("\n## Run pre-install command: %s" % cmd)
                 script.append(os.path.expanduser(cmd))
 
         # install repository
@@ -449,9 +453,9 @@ class RunScript(object):
 
         # run any post-install commands (in the conda environment & repo dir)
         if "postinstall" in project:
+            script.append("\n## Run post-install commands")
             for cmd in project["postinstall"]:
-                script.append("\n## Run post-install command: %s" % cmd)
-                script.append(os.path.expanduser(cmd))
+                script.append(cmd)
 
         # print summary of env
         script.append("\n## List installed packages")
@@ -459,17 +463,16 @@ class RunScript(object):
 
         # run unit tests
         if unit_tests:
-            script.append("\n##### Run unit tests")
-            script.append("testflo -n 1 --pre_announce --show_skipped -o %s.log" % run_name)
+            script.append("\n## Run unit tests")
+            script.append("testflo -n 1 --show_skipped -o $RUN_NAME.log")
 
         # run benchmarks
         script.append("\n## Run benchmarks")
         benchmark_cmd = "/".join([benchmark_dir, conf.get("benchmark_cmd")])
-        csv_file = run_name + ".csv"
         if benchmark_cmd:
-            benchmark_cmd = "%s %s %s" % (benchmark_cmd, run_name, csv_file)
+            benchmark_cmd = "%s $RUN_NAME $RUN_NAME.csv" % benchmark_cmd
         else:
-            benchmark_cmd = "testflo -n 1 -bv -d %s" % (run_name, csv_file)
+            benchmark_cmd = "testflo -n 1 -bv -d $RUN_NAME.csv"
         script.append("if [ $? -eq 0 ]; then")
         script.append(benchmark_cmd)
         script.append("fi")
@@ -478,21 +481,21 @@ class RunScript(object):
         script.append("\n## Clean up")
         script.append("conda deactivate")
         if not keep_env:
-            script.append("conda env remove -q -y --name %s" % run_name)
+            script.append("conda env remove -q -y --name $RUN_NAME")
 
-        logging.info("Run Script:")
+        logging.info("Run Script %s.sh:" % self.run_name)
         logging.info("---------------------------------------------------------")
         logging.info("\n".join(script))
         logging.info("---------------------------------------------------------")
 
     def execute(self):
-        with open("%s.sh" % self.run_name, "a") as f:
+        filename = "%s.sh" % self.run_name
+
+        with open(filename, "a") as f:
             f.write("\n".join(self.script))
 
-        print("bash %s.sh" % self.run_name)
-
-        execute_cmd("chmod +x %s.sh" % self.run_name)
-        execute_cmd("%s.sh" % self.run_name, shell=True)
+        execute_cmd("chmod +x %s" % filename)
+        execute_cmd(filename, shell=True)
 
 
 class Slack(object):
@@ -1157,12 +1160,15 @@ class BenchmarkRunner(object):
                 if not os.path.exists(repo_dir):
                     os.makedirs(repo_dir)
 
-                # create script & run (leaves us in the repo directory)
-                script = RunScript(run_name, project, unit_tests, keep_env)
-                script.execute()
+                # create script & run (in the repo directory)
+                with cd(repo_dir):
+                    script = RunScript(run_name, project, unit_tests, keep_env)
+                    script.execute()
+
+                repo_name = project["repository"].split('/')[-1]
 
                 # check for failed unit test
-                test_log = "%s.log" % run_name
+                test_log = os.path.join(repo_dir, repo_name, "%s.log" % run_name)
                 logging.info("unit test results:", test_log)
                 for line in open(test_log):
                     if line.startswith("Failed:"):
@@ -1176,7 +1182,7 @@ class BenchmarkRunner(object):
 
                 # check for failed benchmarks
                 if good_commits:
-                    benchmark_log = "tesflo_report.out"
+                    benchmark_log = os.path.join(repo_dir, repo_name, "testflo_report.out") 
                     logging.info("benchmark results:", benchmark_log)
                     for line in open(benchmark_log):
                         if line.startswith("Failed:"):

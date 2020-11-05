@@ -19,6 +19,6 @@
     ],
 
     "preinstall": [
-        "~/dev/build_pyoptsparse/build_pyoptsparse.sh -a -s ~/dev/snopt7/src"
+        "~/dev/build_pyoptsparse/build_pyoptsparse.sh -p `pwd` -s ~/dev/snopt7/src"
     ]
 }

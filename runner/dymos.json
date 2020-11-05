@@ -6,21 +6,21 @@
         "git@github.com:openmdao/MBI"
     ],
 
+    "extras": "[all]",
+
     "conda": [
         "python=3",
         "numpy",
         "scipy",
+        "mpi4py",
         "petsc4py"
     ],
 
     "dependencies": [
-        "sqlitedict",
-        "~/dev/ipopt/pyoptsparse"
+        "sqlitedict"
     ],
 
-    "env": {
-        "LD_LIBRARY_PATH": "~/dev/ipopt/lib",
-        "IPOPT_LIB": "~/dev/ipopt/lib",
-        "IPOPT_INC": "~/dev/ipopt/include/coin-or"
-    }
+    "preinstall": [
+        "~/dev/build_pyoptsparse/build_pyoptsparse.sh -p `pwd` -s ~/dev/snopt7/src"
+    ]
 }
