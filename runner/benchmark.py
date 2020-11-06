@@ -1182,10 +1182,10 @@ class BenchmarkRunner(object):
                 # check for failed unit test
                 if unit_tests:
                     test_log = os.path.join(repo_dir, repo_name, "%s.log" % run_name)
-                    logging.info("unit test results:", test_log)
+                    logging.info("unit test results: %s", test_log)
                     for line in open(test_log):
                         if line.startswith("Failed:"):
-                            print("test results:", line, line.split()[1])
+                            print("test failures:", line, line.split()[1])
                             if line.split()[1] != "0":
                                 write_json(fail_file, current_commits)
                                 self.slack.post_message("%s However, unit tests failed... <!channel>" % trigger_msg)
@@ -1194,12 +1194,12 @@ class BenchmarkRunner(object):
                                 good_commits = False
 
                 # check for failed benchmarks
-                if not unit_tests or good_commits:
+                if good_commits or not unit_tests:
                     benchmark_log = os.path.join(repo_dir, repo_name, "testflo_report.out")
-                    logging.info("benchmark results:", benchmark_log)
+                    logging.info("benchmark results: %s", benchmark_log)
                     for line in open(benchmark_log):
                         if line.startswith("Failed:"):
-                            print("benchmark results:", line, line.split()[1])
+                            print("benchmark failures:", line, line.split()[1])
                             if line.split()[1] != "0":
                                 write_json(fail_file, current_commits)
                                 self.slack.post_message("%s However, unit tests failed... <!channel>" % trigger_msg)
