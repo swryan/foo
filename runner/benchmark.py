@@ -1185,7 +1185,7 @@ class BenchmarkRunner(object):
                         logging.info("unit test results file: %s", test_log)
                         for line in open(test_log):
                             if line.startswith("Failed:"):
-                                logging.info("test failures (%d): %s", line.split()[1], line)
+                                logging.info("test failures (%s): %s", line.split()[1], line)
                                 if line.split()[1] != "0":
                                     write_json(fail_file, current_commits)
                                     self.slack.post_message("%s However, unit tests failed... <!channel>" % trigger_msg)
@@ -1199,7 +1199,7 @@ class BenchmarkRunner(object):
                         logging.info("benchmark results file: %s", benchmark_log)
                         for line in open(benchmark_log):
                             if line.startswith("Failed:"):
-                                logging.info("benchmark failures (%d): %s", line.split()[1], line)
+                                logging.info("benchmark failures (%s): %s", line.split()[1], line)
                                 if line.split()[1] != "0":
                                     write_json(fail_file, current_commits)
                                     self.slack.post_message("%s However, benchmarks failed... <!channel>" % trigger_msg)
