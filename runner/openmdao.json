@@ -9,13 +9,16 @@
     "conda": [
         "python=3",
         "numpy",
-        "scipy"
+        "scipy",
+        "mpi4py",
+        "petsc4py"
     ],
 
     "dependencies": [
-        "mpi4py",
-        "petsc4py",
-        "sqlitedict",
-        "~/dev/pyoptsparse"
+        "sqlitedict"
+    ],
+
+    "preinstall": [
+        "~/dev/build_pyoptsparse/build_pyoptsparse.sh -p `pwd` -s ~/dev/snopt7/src"
     ]
 }
