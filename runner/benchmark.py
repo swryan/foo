@@ -473,6 +473,11 @@ class RunScript(object):
         script.append("\n## List installed packages")
         script.append("conda list")
 
+        script.append("\n## Show selected env info")
+        script.append("hostname")
+        script.append("pwd")
+        script.append("env | grep IPOP")
+
         # run unit tests
         if unit_tests:
             script.append("\n## Run unit tests")
