@@ -142,9 +142,9 @@ def execute_cmd(cmd, shell=False):
     if rc:
         logging.info("RC: %d", rc)
     if out.strip():
-        logging.debug(out)
+        logging.info(out)
     if rc and err.strip():  # disregard inconsequential stderr output
-        logging.debug("STDERR:\n%s", err)
+        logging.info("STDERR:\n%s", err)
 
     return rc, out, err
 
@@ -474,7 +474,6 @@ class RunScript(object):
         script.append("conda list")
 
         script.append("\n## Show selected env info")
-        script.append("hostname")
         script.append("pwd")
         script.append("env | grep IPOP")
 
