@@ -473,10 +473,6 @@ class RunScript(object):
         script.append("\n## List installed packages")
         script.append("conda list")
 
-        script.append("\n## Show selected env info")
-        script.append("pwd")
-        script.append("env | grep IPOP")
-
         # run unit tests
         if unit_tests:
             script.append("\n## Run unit tests")
@@ -1391,7 +1387,7 @@ def main(args=None):
                 project_file = project+".json"
             project_info = read_json(project_file)
 
-            if project_info.get("skip") and not options.force:
+            if project_info.get("skip"):  # and not options.force:
                 continue
 
             project_name = os.path.basename(project_file).rsplit('.', 1)[0]
