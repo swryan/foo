@@ -6,6 +6,7 @@
 #
 #     RUN_NAME : the name of the job (Default: YYMMDD_HHMMSS)
 #     CSV_FILE : the file name for the benchmark data (Default: RUN_NAME.csv)
+#     OUT_FILE : the file name for the benchmark results (Default: RUN_NAME-bm.log)
 #
 
 if [ -n "$1" ]; then
@@ -18,6 +19,12 @@ if [ -n "$2" ]; then
     CSV_FILE=$2;
 else
     CSV_FILE=$RUN_NAME.csv
+fi
+
+if [ -n "$3" ]; then
+    OUT_FILE=$3;
+else
+    OUT_FILE=${RUN_NAME}-bm.log
 fi
 
 # generate job script
@@ -42,7 +49,7 @@ cat << EOM >$RUN_NAME.sh
 export OMPI_MCA_mpi_warn_on_fork=0
 ulimit -s 10240
 
-testflo --pre_announce -bvs -d $CSV_FILE
+testflo -n 1 -bvs -o $OUT_FILE -d $CSV_FILE
 EOM
 
 # submit the job

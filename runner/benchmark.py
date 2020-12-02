@@ -484,7 +484,7 @@ class RunScript(object):
         if benchmark_cmd:
             benchmark_cmd = "%s $RUN_NAME $RUN_NAME.csv" % benchmark_cmd
         else:
-            benchmark_cmd = "testflo -n 1 -bv -d $RUN_NAME.csv"
+            benchmark_cmd = "testflo -n 1 -bvs -o $RUN_NAME-bm.log  -d $RUN_NAME.csv"
         script.append("if [ $? -eq 0 ]; then")
         script.append(benchmark_cmd)
         script.append("fi")
@@ -1195,7 +1195,7 @@ class BenchmarkRunner(object):
 
                     # check for failed benchmarks
                     if good_commits or not unit_tests:
-                        benchmark_log = os.path.join(repo_name, "testflo_report.out")
+                        benchmark_log = os.path.join(repo_name, "%s-bm.log" % run_name)
                         logging.info("benchmark results file: %s", benchmark_log)
                         for line in open(benchmark_log):
                             if line.startswith("Failed:"):
