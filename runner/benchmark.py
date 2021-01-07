@@ -975,14 +975,14 @@ class BenchmarkDatabase(object):
                 a1 = pyplot.subplot(3, 1, 1)
                 a2 = pyplot.subplot(3, 1, 2)
 
+                plotted = []
+
                 for spec in plot_specs:
                     # get benchmark data for the last 6 weeks
                     since = time.time() - 6*7*24*60*60
                     data = self.get_data_for_spec(spec, since=since)
 
                     if data:
-                        has_data = True
-
                         datetimes = [datetime.fromtimestamp(t) for t in data['timestamp']]
 
                         timestamp = dates.date2num(datetimes)
@@ -997,7 +997,9 @@ class BenchmarkDatabase(object):
                         a1.plot_date(timestamp, elapsed/max_elapsed, '.-', color=color, label=spec)
                         a2.plot_date(timestamp, memory/max_memory, '.-', color=color, label=spec)
 
-                if has_data:
+                        plotted.append(spec)
+
+                if plotted:
                     a1.set_ylim(-0.1, 1.1)
                     a2.set_ylim(-0.1, 1.1)
 
@@ -1012,7 +1014,7 @@ class BenchmarkDatabase(object):
                         tick.label.set_fontsize('x-small')
                     # pyplot.xticks(rotation=45)
 
-                    pyplot.legend(plot_specs, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
+                    pyplot.legend(plotted, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
 
                     if show:
                         pyplot.show()
