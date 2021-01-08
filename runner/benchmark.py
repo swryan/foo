@@ -408,11 +408,11 @@ class RunScript(object):
         # activate
         script.append("conda activate $RUN_NAME")
 
-        # install anytying from anaconda
+        # install anaconda dependencies
         for spec in project["anaconda"]:
             script.append("conda install -c anaconda %s --yes" % spec)
 
-        # install anytying from conda-forge
+        # install conda-forge dependencies
         for spec in project["conda-forge"]:
             script.append("conda install -c conda-forge %s --yes" % spec)
 
