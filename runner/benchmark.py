@@ -384,13 +384,9 @@ class RunScript(object):
 
         script.append("\n## Create Conda environment")
 
-        conda_spec = project["conda"]
+        script.append("\n\ncat ~/.condarc")
 
-        # need conda-forge for petsc, if not using petsc move to bottom of the list
-        if "petsc4py" in conda_spec:
-            script.append("conda config --add channels conda-forge")
-        else:
-            script.append("conda config --append channels conda-forge")
+        conda_spec = project["conda"]
 
         # create conda env with required packages
         cmd = "conda create -y -q -n $RUN_NAME "
@@ -411,6 +407,14 @@ class RunScript(object):
 
         # activate
         script.append("conda activate $RUN_NAME")
+
+        # install anytying from anaconda
+        for spec in project["anaconda"]:
+            script.append("conda install -c anaconda %s --yes" % spec)
+
+        # install anytying from conda-forge
+        for spec in project["conda-forge"]:
+            script.append("conda install -c conda-forge %s --yes" % spec)
 
         # install the proper version of testflo to do the benchmarking
         for spec in conda_spec:
