@@ -9,7 +9,13 @@
     "conda": [
         "python=3",
         "numpy",
-        "scipy",
+        "scipy"
+    ],
+
+    "anaconda": [
+    ],
+
+    "conda-forge": [
         "mpi4py",
         "petsc4py"
     ],

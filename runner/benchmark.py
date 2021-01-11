@@ -409,12 +409,14 @@ class RunScript(object):
         script.append("conda activate $RUN_NAME")
 
         # install anaconda dependencies
-        for spec in project["anaconda"]:
-            script.append("conda install -c anaconda %s --yes" % spec)
+        if "anaconda" in project:
+            for spec in project["anaconda"]:
+                script.append("conda install -c anaconda %s --yes" % spec)
 
         # install conda-forge dependencies
-        for spec in project["conda-forge"]:
-            script.append("conda install -c conda-forge %s --yes" % spec)
+        if "conda-forge" in project:
+            for spec in project["conda-forge"]:
+                script.append("conda install -c conda-forge %s --yes" % spec)
 
         # install the proper version of testflo to do the benchmarking
         for spec in conda_spec:
@@ -848,23 +850,6 @@ class BenchmarkDatabase(object):
             for line in self.connection.iterdump():
                 f.write('%s\n' % line)
 
-    def plot_all(self, show=False, save=True):
-        """
-        generate a history plot of each benchmark
-        """
-        self._ensure_benchmark_data()
-
-        specs = []
-        with self.connection as c:
-            for row in c.execute("SELECT DISTINCT Spec FROM BenchmarkData"):
-                specs.append(row[0])
-
-        filenames = []
-        for spec in specs:
-            filenames.append(self.plot_benchmark_data(spec, show=show, save=save))
-
-        return [f for f in filenames if f is not None]
-
     def get_specs(self):
         specs = []
         with self.connection as c:
@@ -876,8 +861,6 @@ class BenchmarkDatabase(object):
         """
         generate a history plot for a benchmark
         """
-        import numpy as np
-
         logging.info('plot: %s', spec)
 
         self._ensure_benchmark_data()
@@ -885,6 +868,8 @@ class BenchmarkDatabase(object):
         filename = None
 
         try:
+            import numpy as np
+
             if not show:
                 import matplotlib
                 matplotlib.use('Agg')
@@ -974,7 +959,7 @@ class BenchmarkDatabase(object):
             plot_count = int(math.ceil(len(specs)/specs_per_plot))
 
             for plot_no in range(plot_count):
-                pyplot.figure()
+                has_data = False
 
                 # select up to 'specs_per_plot' specs to plot
                 plot_specs = specs[:specs_per_plot]
@@ -987,12 +972,17 @@ class BenchmarkDatabase(object):
                 num_specs = len(plot_specs)
                 color_cycle = iter([color_map(1.*i/num_specs) for i in range(num_specs)])
 
+                a1 = pyplot.subplot(3, 1, 1)
+                a2 = pyplot.subplot(3, 1, 2)
+
                 for spec in plot_specs:
                     # get benchmark data for the last 6 weeks
                     since = time.time() - 6*7*24*60*60
                     data = self.get_data_for_spec(spec, since=since)
 
                     if data:
+                        has_data = True
+
                         datetimes = [datetime.fromtimestamp(t) for t in data['timestamp']]
 
                         timestamp = dates.date2num(datetimes)
@@ -1004,42 +994,96 @@ class BenchmarkDatabase(object):
 
                         color = next(color_cycle)
 
-                        a1 = pyplot.subplot(3, 1, 1)
-                        pyplot.plot_date(timestamp, elapsed/max_elapsed, '.-', color=color, label=spec)
-                        pyplot.ylabel('elapsed time')
+                        a1.plot_date(timestamp, elapsed/max_elapsed, '.-', color=color, label=spec)
+                        a2.plot_date(timestamp, memory/max_memory, '.-', color=color, label=spec)
 
-                        a2 = pyplot.subplot(3, 1, 2)
-                        pyplot.plot_date(timestamp, memory/max_memory, '.-', color=color, label=spec)
-                        pyplot.ylabel('memory usage')
+                if has_data:
+                    a1.set_ylim(-0.1, 1.1)
+                    a2.set_ylim(-0.1, 1.1)
 
-                        # format the ticks
-                        a1.set_xticks([])
-                        a2.xaxis.set_minor_locator(mondays)
-                        a2.xaxis.set_major_formatter(weekFmt)
-                        for tick in a2.xaxis.get_major_ticks():
-                            tick.label.set_fontsize('x-small')
-                        # pyplot.xticks(rotation=45)
+                    a1.set_ylabel('elapsed time')
+                    a2.set_ylabel('memory usage')
 
-                        a1.set_ylim(-0.1, 1.1)
-                        a2.set_ylim(-0.1, 1.1)
+                    # format the ticks
+                    a1.set_xticks([])
+                    a2.xaxis.set_minor_locator(mondays)
+                    a2.xaxis.set_major_formatter(weekFmt)
+                    for tick in a2.xaxis.get_major_ticks():
+                        tick.label.set_fontsize('x-small')
+                    # pyplot.xticks(rotation=45)
 
-                pyplot.legend(plot_specs, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
+                    pyplot.legend(plot_specs, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
 
-                if show:
-                    pyplot.show()
+                    if show:
+                        pyplot.show()
 
-                if save:
-                    # unique filename for every hour, recycled every day (24hr cache on Slack?)
-                    from time import localtime, strftime
-                    filename = self.name + strftime("_%H_", localtime()) + str(plot_no) + ".png"
-                    pyplot.savefig(filename)
-                    code, out, err = execute_cmd("chmod 644 " + filename)
-                    filenames.append(filename)
+                    if save:
+                        # unique filename for every hour, recycled every day (24hr cache on Slack?)
+                        from time import localtime, strftime
+                        filename = self.name + strftime("_%H_", localtime()) + str(plot_no) + ".png"
+                        pyplot.savefig(filename)
+                        code, out, err = execute_cmd("chmod 644 " + filename)
+                        filenames.append(filename)
 
         except ImportError:
             logging.info("numpy and matplotlib are required to plot benchmark data.")
 
         return filenames
+
+    def export_benchmark_data(self, spec=None, since=None, filename=None):
+        """
+        export benchmark data in CSV format
+        """
+        import numpy as np
+
+        logging.info('export: %s', spec)
+
+        self._ensure_benchmark_data()
+
+        c = self.connection.cursor()
+
+        # get column names
+        c.execute("PRAGMA table_info(BenchmarkData)")
+        rows = c.fetchall()
+        col_names = ','.join([meta[1] for meta in rows])
+
+        # get data
+        if spec != 'all':
+            if since:
+                c.execute("SELECT * FROM BenchmarkData "
+                          "WHERE Spec=? and Status=='OK' and DateTime>? "
+                          "ORDER BY DateTime", (spec, since))
+            else:
+                c.execute("SELECT * FROM BenchmarkData "
+                          "WHERE Spec=? and Status=='OK' "
+                          "ORDER BY DateTime", (spec,))
+        else:
+            if since:
+                c.execute("SELECT * FROM BenchmarkData "
+                          "WHERE Status=='OK' and DateTime>? "
+                          "ORDER BY DateTime", (since))
+            else:
+                c.execute("SELECT * FROM BenchmarkData "
+                          "WHERE Status=='OK' "
+                          "ORDER BY DateTime")
+
+        rows = c.fetchall()
+
+        if not rows:
+            logging.warning("No data to export for %s", spec)
+            return
+
+        if filename:
+            with open(filename,'w') as f:
+                f.write(col_names)
+                for row in rows:
+                    f.write(','.join([str(col) for col in row]))
+        else:
+            print(col_names)
+            for row in rows:
+                print(','.join([str(col) for col in row]))
+
+        return filename
 
     def backup(self):
         """
@@ -1359,6 +1403,9 @@ def _get_parser():
     parser.add_argument('-d', '--dump', action='store_true', dest='dump',
                         help='dump the contents of the database to an SQL file')
 
+    parser.add_argument('-e', '--export', metavar='SPEC', action='store', dest='export',
+                        help='export benchmark history for SPEC in CSV format')
+
     return parser
 
 
@@ -1403,7 +1450,7 @@ def main(args=None):
             if options.plot:
                 db = BenchmarkDatabase(project_name)
                 if options.plot == 'all':
-                    db.plot_benchmarks(save=True)
+                    db.plot_benchmarks(save=True, show=True)
                 else:
                     db.plot_benchmark_data(options.plot, show=True)
             elif options.dump:
@@ -1414,6 +1461,9 @@ def main(args=None):
                 messages = db.check_benchmarks()
                 for msg in messages:
                     logging.info(msg)
+            elif options.export:
+                db = BenchmarkDatabase(project_name)
+                db.export_benchmark_data(options.export)
             else:
                 # use a different repo directory for each project
                 conf["repo_dir"] = os.path.expanduser(
