@@ -995,12 +995,15 @@ class BenchmarkDatabase(object):
                         color = next(color_cycle)
 
                         a1.plot_date(timestamp, elapsed/max_elapsed, '.-', color=color, label=spec)
-                        a1.set_ylabel('elapsed time')
-
                         a2.plot_date(timestamp, memory/max_memory, '.-', color=color, label=spec)
-                        a2.set_ylabel('memory usage')
 
                 if has_data:
+                    a1.set_ylim(-0.1, 1.1)
+                    a2.set_ylim(-0.1, 1.1)
+
+                    a1.set_ylabel('elapsed time')
+                    a2.set_ylabel('memory usage')
+
                     # format the ticks
                     a1.set_xticks([])
                     a2.xaxis.set_minor_locator(mondays)
@@ -1009,10 +1012,8 @@ class BenchmarkDatabase(object):
                         tick.label.set_fontsize('x-small')
                     # pyplot.xticks(rotation=45)
 
-                    a1.set_ylim(-0.1, 1.1)
-                    a2.set_ylim(-0.1, 1.1)
-
-                    pyplot.legend(plot_specs, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
+                    legend_specs = [spec.split(':')[-1] for spec in plot_specs]
+                    pyplot.legend(legend_specs, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
 
                     if show:
                         pyplot.show()
