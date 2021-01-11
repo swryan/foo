@@ -21,6 +21,7 @@ import pathlib
 from datetime import datetime
 
 import logging
+logging.basicConfig(level=logging.DEBUG)
 
 from argparse import ArgumentParser
 
@@ -172,7 +173,7 @@ def init_logging():
     """
     initialize logging to stdout with clean format
     """
-    log = logging.getLogger('benchmark')
+    log = logging.getLogger()
 
     # remove old handler(s)
     for hdlr in log.handlers:
@@ -199,7 +200,7 @@ def init_log_file(name):
     format_str = '%(asctime)s %(name)s %(levelname)s: %(message)s'
     fh.formatter = logging.Formatter(format_str)
 
-    log = logging.getLogger('benchmark')
+    log = logging.getLogger()
     log.addHandler(fh)
 
 
@@ -207,7 +208,7 @@ def close_log_file():
     """
     close current log file(s)
     """
-    log = logging.getLogger('benchmark')
+    log = logging.getLogger()
     handlers = log.handlers[:]
     for handler in handlers:
         if isinstance(handler, logging.FileHandler):
@@ -408,12 +409,14 @@ class RunScript(object):
         script.append("conda activate $RUN_NAME")
 
         # install anaconda dependencies
-        for spec in project["anaconda"]:
-            script.append("conda install -c anaconda %s --yes" % spec)
+        if "anaconda" in project:
+            for spec in project["anaconda"]:
+                script.append("conda install -c anaconda %s --yes" % spec)
 
         # install conda-forge dependencies
-        for spec in project["conda-forge"]:
-            script.append("conda install -c conda-forge %s --yes" % spec)
+        if "conda-forge" in project:
+            for spec in project["conda-forge"]:
+                script.append("conda install -c conda-forge %s --yes" % spec)
 
         # install the proper version of testflo to do the benchmarking
         for spec in conda_spec:
