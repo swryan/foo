@@ -1012,8 +1012,7 @@ class BenchmarkDatabase(object):
                         tick.label.set_fontsize('x-small')
                     # pyplot.xticks(rotation=45)
 
-                    legend_specs = [spec.split(':')[-1] for spec in plot_specs]
-                    pyplot.legend(legend_specs, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
+                    pyplot.legend(plot_specs, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
 
                     if show:
                         pyplot.show()
