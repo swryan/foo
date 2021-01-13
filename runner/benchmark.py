@@ -943,12 +943,13 @@ class BenchmarkDatabase(object):
 
             self._ensure_benchmark_data()
 
-            # select only the specs that have more than one data point
+            # select only the specs that have more than one data point in the last 6 weeks
+            since = time.time() - 6*7*24*60*60
             specs = self.get_specs()
 
             select_specs = []
             for spec in specs:
-                data = self.get_data_for_spec(spec)
+                data = self.get_data_for_spec(spec, since=since)
                 if data and len(data['elapsed']) > 1:
                     select_specs.append(spec)
 
@@ -957,9 +958,12 @@ class BenchmarkDatabase(object):
             specs_per_plot = 9
 
             plot_count = int(math.ceil(len(specs)/specs_per_plot))
+            plotted = []
 
             for plot_no in range(plot_count):
-                has_data = False
+                if plotted:
+                    pyplot.figure()  # new figure
+                    plotted = []
 
                 # select up to 'specs_per_plot' specs to plot
                 plot_specs = specs[:specs_per_plot]
@@ -975,29 +979,25 @@ class BenchmarkDatabase(object):
                 a1 = pyplot.subplot(3, 1, 1)
                 a2 = pyplot.subplot(3, 1, 2)
 
-                plotted = []
 
                 for spec in plot_specs:
-                    # get benchmark data for the last 6 weeks
-                    since = time.time() - 6*7*24*60*60
                     data = self.get_data_for_spec(spec, since=since)
 
-                    if data:
-                        datetimes = [datetime.fromtimestamp(t) for t in data['timestamp']]
+                    datetimes = [datetime.fromtimestamp(t) for t in data['timestamp']]
 
-                        timestamp = dates.date2num(datetimes)
-                        elapsed   = np.array(data['elapsed'])
-                        memory    = np.array(data['memory'])
+                    timestamp = dates.date2num(datetimes)
+                    elapsed   = np.array(data['elapsed'])
+                    memory    = np.array(data['memory'])
 
-                        max_elapsed = max(max_elapsed, np.max(elapsed))
-                        max_memory  = max(max_memory, np.max(memory))
+                    max_elapsed = max(max_elapsed, np.max(elapsed))
+                    max_memory  = max(max_memory, np.max(memory))
 
-                        color = next(color_cycle)
+                    color = next(color_cycle)
 
-                        a1.plot_date(timestamp, elapsed/max_elapsed, '.-', color=color, label=spec)
-                        a2.plot_date(timestamp, memory/max_memory, '.-', color=color, label=spec)
+                    a1.plot_date(timestamp, elapsed/max_elapsed, '.-', color=color, label=spec)
+                    a2.plot_date(timestamp, memory/max_memory, '.-', color=color, label=spec)
 
-                        plotted.append(spec)
+                    plotted.append(spec)
 
                 if plotted:
                     a1.set_ylim(-0.1, 1.1)
@@ -1453,8 +1453,12 @@ def main(args=None):
                 db = BenchmarkDatabase(project_name)
                 if options.plot == 'all':
                     db.plot_benchmarks(save=True, show=True)
-                else:
-                    db.plot_benchmark_data(options.plot, show=True)
+                    summary_plots = db.plot_benchmarks(save=True, show=True)
+                    rc = upload(summary_plots, conf["images"]["upload"])
+                    bm = BenchmarkRunner(project_info)
+                    image_url = conf["images"]["url"]
+                    for plot_file in summary_plots:
+                        bm.slack.post_image("", "/".join([image_url, plot_file]))
             elif options.dump:
                 db = BenchmarkDatabase(project_name)
                 db.dump()
