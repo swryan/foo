@@ -1450,6 +1450,8 @@ def main(args=None):
                 db = BenchmarkDatabase(project_name)
                 if options.plot == 'all':
                     db.plot_benchmarks(save=True, show=True)
+                else:
+                    db.plot_benchmark_data(options.plot, show=True)
             elif options.dump:
                 db = BenchmarkDatabase(project_name)
                 db.dump()
