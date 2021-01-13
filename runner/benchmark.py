@@ -974,8 +974,7 @@ class BenchmarkDatabase(object):
                 num_specs = len(plot_specs)
                 color_cycle = iter([color_map(1.*i/num_specs) for i in range(num_specs)])
 
-                # Creating a subplot will delete any pre-existing subplot that overlaps with it
-                # https://matplotlib.org/3.3.3/api/_as_gen/matplotlib.pyplot.subplot.html
+                fig = pyplot.figure()
                 a1 = pyplot.subplot(3, 1, 1)
                 a2 = pyplot.subplot(3, 1, 2)
 
@@ -1022,6 +1021,8 @@ class BenchmarkDatabase(object):
                     pyplot.savefig(filename)
                     code, out, err = execute_cmd("chmod 644 " + filename)
                     filenames.append(filename)
+
+                pyplot.close(fig)
 
         except ImportError:
             logging.info("numpy and matplotlib are required to plot benchmark data.")
@@ -1449,12 +1450,6 @@ def main(args=None):
                 db = BenchmarkDatabase(project_name)
                 if options.plot == 'all':
                     db.plot_benchmarks(save=True, show=True)
-                    # summary_plots = db.plot_benchmarks(save=True, show=True)
-                    # rc = upload(summary_plots, conf["images"]["upload"])
-                    # bm = BenchmarkRunner(project_info)
-                    # image_url = conf["images"]["url"]
-                    # for plot_file in summary_plots:
-                    #     bm.slack.post_image("", "/".join([image_url, plot_file]))
             elif options.dump:
                 db = BenchmarkDatabase(project_name)
                 db.dump()
