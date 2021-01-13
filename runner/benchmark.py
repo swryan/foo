@@ -21,7 +21,7 @@ import pathlib
 from datetime import datetime
 
 import logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 from argparse import ArgumentParser
 
@@ -859,7 +859,7 @@ class BenchmarkDatabase(object):
 
     def plot_benchmark_data(self, spec=None, show=False, save=False):
         """
-        generate a history plot for a benchmark
+        generate a history plot for a single benchmark
         """
         logging.info('plot: %s', spec)
 
@@ -943,27 +943,29 @@ class BenchmarkDatabase(object):
 
             self._ensure_benchmark_data()
 
-            # select only the specs that have more than one data point
+            # select only the specs that have more than one data point in the last 6 weeks
+            since = time.time() - 6*7*24*60*60
             specs = self.get_specs()
 
-            select_specs = []
+            data = {}
             for spec in specs:
-                data = self.get_data_for_spec(spec)
-                if data and len(data['elapsed']) > 1:
-                    select_specs.append(spec)
+                data_for_spec = self.get_data_for_spec(spec, since=since)
+                if data_for_spec and len(data_for_spec['elapsed']) > 1:
+                    data[spec] = data_for_spec
 
-            specs = select_specs
+            specs = sorted(list(data.keys()))
 
-            specs_per_plot = 9
-
+            specs_per_plot = 7
             plot_count = int(math.ceil(len(specs)/specs_per_plot))
 
-            for plot_no in range(plot_count):
-                has_data = False
+            logging.info("specs: %d, specs per plot: %d, plot_count: %d" %
+                         (len(specs), specs_per_plot, plot_count))
 
+            for plot_no in range(plot_count):
                 # select up to 'specs_per_plot' specs to plot
                 plot_specs = specs[:specs_per_plot]
                 specs = specs[specs_per_plot:]
+                logging.info('plotting:\n%s' % '\n'.join(plot_specs))
 
                 # initialize max values to normalize data
                 max_elapsed = 0
@@ -972,60 +974,55 @@ class BenchmarkDatabase(object):
                 num_specs = len(plot_specs)
                 color_cycle = iter([color_map(1.*i/num_specs) for i in range(num_specs)])
 
+                fig = pyplot.figure()
                 a1 = pyplot.subplot(3, 1, 1)
                 a2 = pyplot.subplot(3, 1, 2)
 
-                plotted = []
-
                 for spec in plot_specs:
-                    # get benchmark data for the last 6 weeks
-                    since = time.time() - 6*7*24*60*60
                     data = self.get_data_for_spec(spec, since=since)
 
-                    if data:
-                        datetimes = [datetime.fromtimestamp(t) for t in data['timestamp']]
+                    datetimes = [datetime.fromtimestamp(t) for t in data['timestamp']]
 
-                        timestamp = dates.date2num(datetimes)
-                        elapsed   = np.array(data['elapsed'])
-                        memory    = np.array(data['memory'])
+                    timestamp = dates.date2num(datetimes)
+                    elapsed   = np.array(data['elapsed'])
+                    memory    = np.array(data['memory'])
 
-                        max_elapsed = max(max_elapsed, np.max(elapsed))
-                        max_memory  = max(max_memory, np.max(memory))
+                    max_elapsed = max(max_elapsed, np.max(elapsed))
+                    max_memory  = max(max_memory, np.max(memory))
 
-                        color = next(color_cycle)
+                    color = next(color_cycle)
 
-                        a1.plot_date(timestamp, elapsed/max_elapsed, '.-', color=color, label=spec)
-                        a2.plot_date(timestamp, memory/max_memory, '.-', color=color, label=spec)
+                    a1.plot_date(timestamp, elapsed/max_elapsed, '.-', color=color, label=spec)
+                    a2.plot_date(timestamp, memory/max_memory, '.-', color=color, label=spec)
 
-                        plotted.append(spec)
+                a1.set_ylim(-0.1, 1.1)
+                a2.set_ylim(-0.1, 1.1)
 
-                if plotted:
-                    a1.set_ylim(-0.1, 1.1)
-                    a2.set_ylim(-0.1, 1.1)
+                a1.set_ylabel('elapsed time')
+                a2.set_ylabel('memory usage')
 
-                    a1.set_ylabel('elapsed time')
-                    a2.set_ylabel('memory usage')
+                # format the ticks
+                a1.set_xticks([])
+                a2.xaxis.set_minor_locator(mondays)
+                a2.xaxis.set_major_formatter(weekFmt)
+                for tick in a2.xaxis.get_major_ticks():
+                    tick.label.set_fontsize('x-small')
+                # pyplot.xticks(rotation=45)
 
-                    # format the ticks
-                    a1.set_xticks([])
-                    a2.xaxis.set_minor_locator(mondays)
-                    a2.xaxis.set_major_formatter(weekFmt)
-                    for tick in a2.xaxis.get_major_ticks():
-                        tick.label.set_fontsize('x-small')
-                    # pyplot.xticks(rotation=45)
+                pyplot.legend(plot_specs, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
 
-                    pyplot.legend(plotted, loc=9, prop={'size': 8}, bbox_to_anchor=(0.5, -0.2))
+                if show:
+                    pyplot.show()
 
-                    if show:
-                        pyplot.show()
+                if save:
+                    # unique filename for every hour, recycled every day (24hr cache on Slack?)
+                    from time import localtime, strftime
+                    filename = self.name + strftime("_%H_", localtime()) + str(plot_no) + ".png"
+                    pyplot.savefig(filename)
+                    code, out, err = execute_cmd("chmod 644 " + filename)
+                    filenames.append(filename)
 
-                    if save:
-                        # unique filename for every hour, recycled every day (24hr cache on Slack?)
-                        from time import localtime, strftime
-                        filename = self.name + strftime("_%H_", localtime()) + str(plot_no) + ".png"
-                        pyplot.savefig(filename)
-                        code, out, err = execute_cmd("chmod 644 " + filename)
-                        filenames.append(filename)
+                pyplot.close(fig)
 
         except ImportError:
             logging.info("numpy and matplotlib are required to plot benchmark data.")
